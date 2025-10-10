@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Crear servicio{% endblock %}
+{% block content %}
+<h1>Crear servicio</h1>
+
+<form method="post" class="card card-body">
+  {% csrf_token %}
+
+  {% if ruta_prefill %}
+    <div class="alert alert-info mb-3">
+      <strong>Ruta:</strong> {{ ruta_prefill.nombre|default:"(sin nombre)" }}
+      &nbsp;—&nbsp; <strong>Fecha:</strong> {{ ruta_prefill.fecha_salida }}
+      &nbsp;—&nbsp; <strong>Conductor:</strong> {{ ruta_prefill.conductor.username }}
+      <br><small>La ruta está fijada para este servicio.</small>
+    </div>
+  {% endif %}
+
+  <div class="row">
+    <div class="col-md-6">
+      <div class="mb-3">{{ form.ruta.label_tag }} {{ form.ruta }} {{ form.ruta.errors }}</div>
+      <div class="mb-3">{{ form.cliente.label_tag }} {{ form.cliente }} {{ form.cliente.errors }}</div>
+      <div class="mb-3">{{ form.valor.label_tag }} {{ form.valor }} {{ form.valor.errors }}</div>
+
+      <div class="mb-1">
+        {{ form.estado_pago.label_tag }} {{ form.estado_pago }} {{ form.estado_pago.errors }}
+      </div>
+      <div class="form-text mb-3">
+        • <b>Pendiente</b>: todo va a cartera.<br>
+        • <b>Recibir anticipo</b>: parte en caja y resto a cartera.<br>
+        • <b>Pagado</b>: sin cartera.
+      </div>
+
+      <div class="mb-3" id="grp-anticipo">
+        {{ form.anticipo.label_tag }} {{ form.anticipo }} {{ form.anticipo.errors }}
+        <div class="form-text">Ingresa el valor recibido ahora (no puede superar el total).</div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="mb-3">{{ form.origen.label_tag }} {{ form.origen }} {{ form.origen.errors }}</div>
+      <div class="mb-3">{{ form.destino.label_tag }} {{ form.destino }} {{ form.destino.errors }}</div>
+      <div class="mb-3">{{ form.notas.label_tag }} {{ form.notas }} {{ form.notas.errors }}</div>
+    </div>
+  </div>
+
+  <div class="mt-2">
+    <button class="btn btn-primary">Guardar</button>
+    <a href="{% url 'rutas:list' %}" class="btn btn-light">Cancelar</a>
+  </div>
+</form>
+
+<script>
+  // Toggle del campo Anticipo según estado (PEND / ANT / PAG)
+  const estado = document.getElementById("id_estado_pago");
+  const grpAnticipo = document.getElementById("grp-anticipo");
+  const anticipo = document.getElementById("id_anticipo");
+  const valor = document.getElementById("id_valor");
+
+  function toggleAnticipo(){
+    if (!estado | !grpAnticipo) return;
+    if (estado.value === "ANT") {
+      grpAnticipo.style.display = "";
+    } else {
+      grpAnticipo.style.display = "none";
+      if (anticipo) {
+        anticipo.value = (estado.value === "PAG" && valor) ? valor.value : 0;
+      }
+    }
+  }
+  toggleAnticipo();
+  if (estado) estado.addEventListener("change", toggleAnticipo);
+</script>
+{% endblock %}

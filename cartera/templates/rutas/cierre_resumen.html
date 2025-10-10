@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% load humanize %}
+{% block title %}Cierre de Ruta — {{ ruta.nombre|default:"#"|add:ruta.id|stringformat:"s" }}{% endblock %}
+
+{% block content %}
+{% with rol=user.userprofile.rol|default_if_none:'' %}
+  {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h1 class="m-0">Cierre de ruta — {{ ruta.nombre|default:"(sin nombre)" }} <small class="text-muted">#{{ ruta.id }}</small></h1>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="{% url 'rutas:hoja' ruta.id %}">⬅️ Hoja de ruta</a>
+        <a class="btn btn-success" href="{% url 'rutas:exportar_cierre_csv' ruta.id %}">⬇️ Exportar CSV</a>
+      </div>
+    </div>
+
+    <div class="row g-3">
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header">Servicios</div>
+          <div class="card-body">
+            <p class="m-0">Total: <strong>{{ cierre.total_servicios }}</strong></p>
+            <p class="m-0">Cobrado: <strong>{{ cierre.total_cobrado|money }}</strong></p>
+            <p class="m-0">Pendiente: <strong>{{ cierre.total_pendiente|money }}</strong></p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header">Caja</div>
+          <div class="card-body">
+            <p class="m-0">Ingresos: <strong>{{ cierre.total_ingresos|money }}</strong></p>
+            <p class="m-0">Gastos: <strong>{{ cierre.total_gastos|money }}</strong></p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-header">Resultado</div>
+          <div class="card-body">
+            <p class="m-0 fs-5">
+              Utilidad neta:
+              <span class="badge {% if cierre.utilidad_neta >= 0 %}text-bg-success{% else %}text-bg-danger{% endif %} fs-5">
+                {{ cierre.utilidad_neta|money }}
+              </span>
+            </p>
+            <small class="text-muted">Generado por: {{ cierre.generado_por }} — {{ cierre.updated_at|date:"Y-m-d H:i" }}</small>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mt-4 shadow-sm">
+      <div class="card-header">Servicios en la ruta</div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm table-striped m-0">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Cliente</th>
+                <th>Origen → Destino</th>
+                <th class="text-end">Valor</th>
+                <th class="text-center">Pago</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in servicios %}
+              <tr>
+                <td>#{{ s.id }}</td>
+                <td>{{ s.cliente|default:"—" }}</td>
+                <td>{{ s.origen }} → {{ s.destino }}</td>
+                <td class="text-end">{{ s.valor|money }}</td>
+                <td class="text-center">
+                  {% if s.estado_pago == "PEND" %}
+                    <span class="badge text-bg-secondary">Pendiente</span>
+                  {% elif s.estado_pago == "ANT" %}
+                    <span class="badge text-bg-warning">Anticipo</span>
+                  {% else %}
+                    <span class="badge text-bg-success">Pagado</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {% else %}
+    <div class="alert alert-secondary">
+      Esta información de cierre no está disponible para tu rol.
+      <a href="{% url 'rutas:hoja' ruta.id %}" class="alert-link">Volver a la hoja de ruta</a>.
+    </div>
+  {% endif %}
+{% endwith %}
+{% endblock %}

@@ -1,0 +1,393 @@
+/* ==============
+   AcarreApp – Base Design System
+   Mobile-first • Responsive • Sobrio • Accesible
+   ============== */
+
+/* 1) Variables de tema */
+:root{
+  /* Brand (paleta) */
+  --brand-900: #111144; /* Deadly Depths */
+  --brand-800: #223382; /* Deep Space Royal */
+  --brand-300: #9BACD8; /* Aster Flower Blue */
+  --accent-500: #F98513; /* Habañero */
+  --bg-100:  #F4F1EC;   /* Luster White */
+  --bg-200:  #DAD1C8;   /* Jodhpur Tan */
+
+  /* Grises derivados (tema claro) */
+  --ink-900: #0E1020;   /* texto principal */
+  --ink-700: #2E3147;   /* texto secundario */
+  --ink-500: #4E5270;   /* muted */
+  --line-200:#E3E1DB;   /* bordes suaves */
+
+  /* Elevación y radios */
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --shadow-1: 0 4px 12px rgba(17,17,68,0.08);
+  --shadow-2: 0 10px 30px rgba(17,17,68,0.12);
+
+  /* Tipografía y ritmo */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  --fs-xs: clamp(12px, 0.72rem, 13px);
+  --fs-sm: clamp(13px, 0.8rem, 14px);
+  --fs-md: clamp(14px, 0.95rem, 16px);
+  --fs-lg: clamp(16px, 1.05rem, 18px);
+  --fs-xl: clamp(18px, 1.25rem, 22px);
+  --fs-2xl: clamp(22px, 1.6rem, 28px);
+  --container-max: 1200px;
+
+  /* Estados (badges) */
+  --st-pend: #7A7F9A; /* PENDIENTE */
+  --st-ant:  #2F7D32; /* ANTICIPO */
+  --st-pag:  #1C5DFF; /* PAGADO */
+  --st-warn: #C17C00;
+  --st-error:#B00020;
+}
+
+/* Modo oscuro opcional: <html data-theme="dark"> */
+html[data-theme="dark"]{
+  --bg-100: #0E1020;
+  --bg-200: #131638;
+  --ink-900: #F4F1EC;
+  --ink-700: #DAD1C8;
+  --ink-500: #9BACD8;
+  --line-200: rgba(255,255,255,0.12);
+  --shadow-1: 0 6px 16px rgba(0,0,0,0.35);
+  --shadow-2: 0 16px 40px rgba(0,0,0,0.45);
+}
+
+/* 2) Reset suave y base */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; }
+body{
+  margin: 0;
+  background: var(--bg-100);
+  color: var(--ink-900);
+  font-family: var(--font-sans);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+a{ color: inherit; }
+.container{
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: 16px;
+  max-width: var(--container-max);
+}
+
+/* Accesibilidad: helpers */
+.sr-only{
+  position: absolute !important;
+  width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+}
+.sr-only-focusable:active, .sr-only-focusable:focus{
+  position: static !important;
+  width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal;
+  background: #fff; color: #000; padding: 6px 10px; border-radius: 6px;
+}
+
+/* 3) Títulos */
+h1, .h1{ font-size: var(--fs-2xl); margin: 0 0 12px; font-weight: 700; color: var(--brand-800); }
+h2, .h2{ font-size: var(--fs-xl);  margin: 0 0 10px; font-weight: 700; color: var(--brand-800); }
+h3, .h3{ font-size: var(--fs-lg);  margin: 0 0 8px;  font-weight: 600; color: var(--ink-900); }
+
+/* 4) Superficies */
+.card{
+  background: #fff;
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+}
+.card-header{
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(155,172,216,0.24), rgba(155,172,216,0.06));
+  border-bottom: 1px solid var(--line-200);
+  font-weight: 600;
+}
+.card-body{ padding: 16px; }
+.card-footer{
+  padding: 12px 16px;
+  background: rgba(244,241,236,0.6);
+  border-top: 1px solid var(--line-200);
+}
+
+/* 5) Botones */
+.btn{
+  --btn-bg: var(--brand-800);
+  --btn-fg: #fff;
+  --btn-border: transparent;
+  appearance: none;
+  display: inline-flex;
+  align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--btn-border);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform .06s ease, box-shadow .2s ease, background .2s ease;
+}
+.btn:hover{ transform: translateY(-1px); box-shadow: var(--shadow-1); }
+.btn:active{ transform: translateY(0); box-shadow: none; }
+
+.btn-primary{ --btn-bg: var(--brand-800); }
+.btn-secondary{ --btn-bg: var(--brand-300); --btn-fg:#0E1020; }
+.btn-accent{ --btn-bg: var(--accent-500); }
+.btn-outline{
+  --btn-bg: transparent; --btn-fg: var(--brand-800); --btn-border: var(--brand-800);
+}
+.btn-quiet{
+  --btn-bg: transparent; --btn-fg: var(--ink-900); --btn-border: var(--line-200);
+  background: rgba(34,51,130,0.02);
+}
+
+/* 6) Badges (estados de Servicio/Ruta) */
+.badge{
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  letter-spacing: .02em;
+  border: 1px solid transparent;
+}
+.badge-pend { background: rgba(122,127,154,0.12); color: #2C314D; border-color: rgba(122,127,154,0.25);}
+.badge-ant  { background: rgba(47,125,50,0.12);  color: #1C5920; border-color: rgba(47,125,50,0.25);}
+.badge-pag  { background: rgba(28,93,255,0.10);  color: #15306E; border-color: rgba(28,93,255,0.25);}
+
+/* 7) Formularios */
+.input, input[type="text"], input[type="number"], input[type="date"], input[type="time"], input[type="email"], select, textarea{
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-200);
+  background: #fff;
+  color: var(--ink-900);
+  font-size: var(--fs-md);
+  outline: none;
+  transition: box-shadow .2s ease, border-color .2s ease;
+}
+.input:focus, input:focus, select:focus, textarea:focus{
+  border-color: var(--brand-300);
+  box-shadow: 0 0 0 4px rgba(155,172,216,0.25);
+}
+.form-row{ display: grid; gap: 12px; }
+@media (min-width: 768px){ .form-row.cols-2{ grid-template-columns: 1fr 1fr; }}
+
+/* 8) Tablas */
+.table{
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+.table th, .table td{
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-200);
+}
+.table thead th{
+  text-align: left;
+  color: var(--ink-700);
+  background: rgba(155,172,216,0.12);
+  position: sticky; top: 0; z-index: 1;
+}
+.table-row-actions{ display:flex; gap:10px; flex-wrap: wrap; }
+
+/* 9) Secciones */
+.section{ padding: 16px; }
+.section-hero{
+  padding: clamp(24px, 6vw, 56px) 16px;
+  background: linear-gradient(180deg, rgba(155,172,216,0.35), rgba(244,241,236,0));
+}
+
+/* 10) Gradientes corporativos */
+.bg-brand-gradient{
+  background: linear-gradient(135deg, var(--brand-800), var(--brand-900));
+  color: #fff;
+}
+.bg-accent-gradient{
+  background: linear-gradient(135deg, var(--accent-500), #FFB35C);
+  color: #1b1b1b;
+}
+
+/* 11) NAVBAR + Menú usuario (userchip) */
+.navbar{
+  position: sticky; top: 0; z-index: 10;
+  background: linear-gradient(180deg, var(--brand-800), var(--brand-900));
+  color: #fff;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  box-shadow: var(--shadow-1);
+}
+.nav-inner{
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+.brand{
+  display: inline-flex; align-items: center; gap: 10px;
+  color: #fff; text-decoration: none; font-weight: 800; letter-spacing: .02em;
+}
+.brand .empresa{ color: rgba(255,255,255,0.9); font-weight: 700; }
+.brand .dot{ width: 10px; height: 10px; border-radius: 50%; background: var(--accent-500); }
+
+.nav{ display: flex; gap: 6px; padding: 4px 0; }
+.main-nav{ display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.nav a{
+  color: #E8ECFF; text-decoration: none; padding: 8px 10px; border-radius: 8px;
+}
+.nav a:hover{ background: rgba(255,255,255,0.08); }
+
+.menu-right{ justify-self: end; position: relative; }
+
+/* Chip del usuario */
+.userchip{
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.userchip .avatar{
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent-500);
+  color: #1b1b1b; font-weight: 800;
+  display:flex; align-items:center; justify-content:center;
+}
+.userchip .meta{ display:flex; flex-direction: column; line-height: 1.05; }
+.userchip .name{ font-size: var(--fs-sm); }
+.userchip .role{ font-size: var(--fs-xs); opacity: .9; color: #E8ECFF; }
+.userchip .caret{ font-size: 16px; margin-left: 2px; opacity: .9; }
+
+/* Dropdown del usuario */
+.dropdown[hidden]{ display: none !important; }
+.dropdown{
+  position: absolute; right: 0; top: calc(100% + 8px);
+  min-width: 220px; z-index: 20;
+  background: #fff; color: var(--ink-900);
+  border: 1px solid var(--line-200);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  padding: 8px;
+}
+.dropdown a,
+.dropdown button{
+  display:block; width:100%;
+  background: transparent; border: 0;
+  text-align: left; color: inherit; text-decoration: none;
+  padding: 10px 10px; border-radius: 8px; font-size: var(--fs-md);
+  cursor: pointer;
+}
+.dropdown a:hover, .dropdown button:hover{
+  background: rgba(155,172,216,0.16);
+}
+.dropdown .divider{ height: 1px; background: var(--line-200); margin: 6px 0; }
+.dropdown-danger{ color: #B00020; }
+
+/* 12) Footer */
+.footer{
+  margin-top: 24px;
+  border-top: 1px solid var(--line-200);
+  background:
+    linear-gradient(180deg, rgba(17,17,68,0.06), rgba(17,17,68,0)) ,
+    var(--bg-100);
+}
+.footer-inner{
+  display: grid; gap: 10px;
+  padding: 18px 16px;
+  color: var(--ink-700);
+  font-size: var(--fs-sm);
+}
+.footer .brandline{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.footer .brandline strong{ color: var(--brand-800); }
+.footer .legal{ opacity: .9; }
+
+/* 13) Utilidades */
+.text-muted{ color: var(--ink-500); }
+.text-accent{ color: var(--accent-500); }
+.text-brand{ color: var(--brand-800); }
+.bg-soft{ background: rgba(155,172,216,0.14); }
+.round-lg{ border-radius: var(--radius-lg); }
+.shadow-2{ box-shadow: var(--shadow-2); }
+.max-w-md{ max-width: 760px; }
+.w-100{ width: 100%; }
+.flex{ display: flex; }
+.flex-col{ flex-direction: column; }
+.gap-8{ gap: 8px; }
+.gap-12{ gap: 12px; }
+
+/* 14) Responsive */
+@media (min-width: 768px){
+  .nav{ gap: 10px; }
+  .card-body{ padding: 20px; }
+  .footer-inner{ grid-template-columns: 1fr auto; align-items: center; }
+}
+@media (max-width: 768px){
+  .nav-inner{
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+  }
+  .main-nav{
+    grid-column: 1 / -1; order: 2; justify-content: flex-start; padding-bottom: 6px;
+  }
+  .menu-right{ order: 1; }
+  .userchip .role{ display:none; }
+}
+@media (min-width: 1100px){
+  .container{ padding-inline: 24px; }
+}
+
+
+/* Rehabilitar el datepicker nativo si algún reset lo apagó */
+input[type="date"].input,
+input[type="date"] {
+  -webkit-appearance: auto;
+  -moz-appearance: auto;
+  appearance: auto;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  display: block;
+  cursor: pointer;
+}
+
+/* Opcional: icono siempre visible en Chrome */
+@supports (-webkit-appearance: none) {
+  input[type="date"] {
+    padding-right: 2.2rem; /* deja espacio al icono */
+  }
+}
+
+/* Mantener el datepicker nativo visible */
+input[type="date"] {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  padding-right: 2.5rem; /* espacio por si el navegador dibuja ícono */
+}
+
+/* Si tienes resets globales, usa este patrón en vez de appearance:none a todo */
+input:not([type="date"]), select, textarea {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Asegura que el ícono sea clickable en WebKit */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 1;
+  display: block;
+  cursor: pointer;
+}
+
+

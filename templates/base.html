@@ -1,0 +1,54 @@
+{% load static %}
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="color-scheme" content="light dark">
+    <title>{% block title %}AcarreApp{% endblock %}</title>
+
+    {# CSS principal del proyecto #}
+    <link rel="stylesheet" href="{% static 'css/acarreapp.css' %}">
+    <link rel="icon" href="{% static 'icons/favicon.ico' %}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{% static 'icons/favicon-32x32.png' %}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{% static 'icons/favicon-16x16.png' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'icons/apple-touch-icon.png' %}">
+    <link rel="manifest" href="{% static 'icons/site.webmanifest' %}">
+    <meta name="theme-color" content="#223382">
+
+
+
+    {% block extra_css %}{% endblock %}
+  </head>
+
+  <body>
+    <a href="#contenido" class="sr-only-focusable" style="
+      position:absolute;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden;
+    ">Saltar al contenido</a>
+
+    {# Barra superior con usuario/menú #}
+    {% include "includes/navbar.html" %}
+
+    {# Mensajes de Django #}
+    {% if messages %}
+      <div class="container" style="margin-top:10px;">
+        {% for message in messages %}
+          <div class="card" role="status" aria-live="polite" style="margin-bottom:8px;border-left:6px solid var(--brand-800);">
+            <div class="card-body">{{ message }}</div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <main id="contenido" class="section container">
+      {% block content %}{% endblock %}
+    </main>
+
+    {% include "includes/footer.html" %}
+
+    {# Bloque para scripts específicos por vista #}
+    {% block extra_js %}{% endblock %}
+
+    
+  </body>
+</html>

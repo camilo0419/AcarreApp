@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Crear servicio{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-shell{max-width: 980px; margin-inline:auto;}
+  .grid-2{display:grid; gap:14px;}
+  @media (min-width: 900px){ .grid-2{grid-template-columns: 1fr 1fr;} }
+
+  /* Tarjetas de estado de pago */
+  .pay-cards{ display:flex; gap:10px; flex-wrap:wrap; }
+  .pay-card{
+    flex:1 1 180px; min-width:180px;
+    border:1px solid var(--line-200);
+    border-radius: var(--radius-md);
+    padding:12px 14px;
+    background:#fff;
+    cursor:pointer;
+    box-shadow: var(--shadow-1);
+    transition: transform .06s ease, box-shadow .06s ease, border-color .06s ease;
+  }
+  .pay-card:hover{ transform: translateY(-1px); box-shadow: var(--shadow-2); }
+  .pay-card.active{ border-color: var(--pri-500); box-shadow: 0 0 0 3px rgba(47,62,140,.15); }
+  .pay-title{ font-weight:600; }
+  .pay-desc{ color:var(--muted); font-size:.9rem; margin-top:4px; }
+
+  /* Espacio extra bajo las tarjetas para despegar de los botones */
+  .pay-group{ margin-bottom: 18px; }
+
+  /* Botones del mismo tamaño */
+  .actions{ display:flex; gap:12px; flex-wrap:wrap; }
+  .actions .btn{ min-width: 150px; }
+
+  /* Botón Maps pequeño junto al input */
+  .map-row{ display:flex; gap:8px; align-items:center; }
+  .map-row .map-btn{ white-space:nowrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Crear servicio</h1>
+
+<form method="post" class="card card-body form-shell">
+  {% csrf_token %}
+
+  {# Info de ruta fijada arriba (se mantiene), pero abajo ya no mostramos el select #}
+  {% if ruta_prefill %}
+    <div class="card" style="border-left:6px solid var(--pri-500); margin-bottom:12px;">
+      <div class="card-body">
+        <strong>Ruta:</strong> {{ ruta_prefill.nombre|default:"(sin nombre)" }}
+        &nbsp;—&nbsp; <strong>Fecha:</strong> {{ ruta_prefill.fecha_salida|date:"Y-m-d" }}
+        &nbsp;—&nbsp; <strong>Conductor:</strong> {% firstof ruta_prefill.conductor.get_full_name ruta_prefill.conductor.username "—" %}
+        
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="grid-2">
+    <div>
+      {# Si hay ruta prefijada, enviamos hidden; si no, mostramos el select normal #}
+      <div class="mb-3">
+        {% if ruta_prefill %}
+          <input type="hidden"
+                 name="{{ form.ruta.html_name }}"
+                 id="{{ form.ruta.id_for_label }}"
+                 value="{{ ruta_prefill.pk }}">
+        {% else %}
+          {{ form.ruta.label_tag }} {{ form.ruta }} {{ form.ruta.errors }}
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.cliente.label_tag }} {{ form.cliente }} {{ form.cliente.errors }}
+      </div>
+
+      <div class="mb-3">
+        {{ form.valor.label_tag }} {{ form.valor }} {{ form.valor.errors }}
+      </div>
+
+      {# ---- ESTADO DE PAGO COMO TARJETAS ---- #}
+      <div class="pay-group">
+        <label class="form-label">Estado de pago</label>
+        {{ form.estado_pago.as_hidden }}  {# mantenemos el campo real, oculto #}
+
+        <div class="pay-cards" id="payCards">
+          <div class="pay-card" data-value="PEND">
+            <div class="pay-title">Pendiente</div>
+            <div class="pay-desc">Todo a cartera.</div>
+          </div>
+          <div class="pay-card" data-value="ANT">
+            <div class="pay-title">Recibir anticipo</div>
+            <div class="pay-desc">Parte recibido, resto a cartera.</div>
+          </div>
+          <div class="pay-card" data-value="PAG">
+            <div class="pay-title">Pagado</div>
+            <div class="pay-desc">Sin cartera.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-3" id="grp-anticipo">
+        {{ form.anticipo.label_tag }} {{ form.anticipo }} {{ form.anticipo.errors }}
+        <div class="form-text">Valor recibido ahora (no puede superar el total).</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="mb-3">
+        {{ form.origen.label_tag }}
+        <div class="map-row">
+          {{ form.origen }}
+          <a class="btn btn-outline-secondary map-btn" id="btnOrigen" href="#" target="_blank" rel="noopener">Abrir en Maps</a>
+        </div>
+        {{ form.origen.errors }}
+      </div>
+
+      <div class="mb-3">
+        {{ form.destino.label_tag }}
+        <div class="map-row">
+          {{ form.destino }}
+          <a class="btn btn-outline-secondary map-btn" id="btnDestino" href="#" target="_blank" rel="noopener">Abrir en Maps</a>
+        </div>
+        {{ form.destino.errors }}
+      </div>
+
+      <div class="mb-3">
+        {{ form.notas.label_tag }} {{ form.notas }} {{ form.notas.errors }}
+      </div>
+    </div>
+  </div>
+
+  <div class="actions mt-2">
+    <button class="btn btn-primary" type="submit">Guardar</button>
+    <a href="{% url 'rutas:list' %}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+
+<script>
+  // ----- Estado de pago (tarjetas) -----
+  const selectEstado = document.getElementById('id_estado_pago');
+  const cardsWrap = document.getElementById('payCards');
+  const grpAnticipo = document.getElementById('grp-anticipo');
+  const inputAnticipo = document.getElementById('id_anticipo');
+  const inputValor = document.getElementById('id_valor');
+
+  function setActiveCard(val){
+    if (!cardsWrap) return;
+    cardsWrap.querySelectorAll('.pay-card').forEach(c=>{
+      c.classList.toggle('active', c.dataset.value === val);
+    });
+  }
+  function toggleAnticipo(){
+    const val = selectEstado ? selectEstado.value : '';
+    if (val === 'ANT'){
+      grpAnticipo && (grpAnticipo.style.display = '');
+    } else {
+      if (grpAnticipo) grpAnticipo.style.display = 'none';
+      if (inputAnticipo){
+        if (val === 'PAG' && inputValor) inputAnticipo.value = inputValor.value || 0;
+        else inputAnticipo.value = 0;
+      }
+    }
+    setActiveCard(val);
+  }
+
+  if (selectEstado){
+    toggleAnticipo();
+    selectEstado.addEventListener('change', toggleAnticipo);
+  }
+
+  if (cardsWrap){
+    cardsWrap.addEventListener('click', (e)=>{
+      const card = e.target.closest('.pay-card');
+      if (!card || !selectEstado) return;
+      selectEstado.value = card.dataset.value;
+      toggleAnticipo();
+    });
+  }
+
+  // ----- Botones "Abrir en Maps" -----
+  function mapsUrl(q){ return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q || ''); }
+  const inOrigen  = document.getElementById('id_origen');
+  const inDestino = document.getElementById('id_destino');
+  const btnOrigen = document.getElementById('btnOrigen');
+  const btnDestino= document.getElementById('btnDestino');
+
+  function bindMap(input, btn){
+    function upd(){ btn.href = mapsUrl(input.value || ''); btn.classList.toggle('disabled', !input.value); }
+    upd();
+    input.addEventListener('input', upd);
+  }
+  if (inOrigen && btnOrigen) bindMap(inOrigen, btnOrigen);
+  if (inDestino && btnDestino) bindMap(inDestino, btnDestino);
+</script>
+{% endblock %}

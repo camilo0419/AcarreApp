@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% load formatting humanize l10n %}
+{% block title %}Cierre de Ruta — {{ ruta.nombre|default:"(sin nombre)" }} #{{ ruta.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .page-shell{max-width:1100px;margin:0 auto;}
+  .actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
+
+  /* KPIs fila 1 (3 columnas) */
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px;}
+  @media (max-width: 992px){ .kpis{grid-template-columns:1fr;} }
+  .kpi{border:1px solid var(--line-200);border-radius:12px;padding:14px 16px;background:#fff;box-shadow:var(--shadow-1);}
+  .kpi .label{font-size:.95rem;color:var(--ink-700);font-weight:600}
+  .kpi .value{font-size:1.6rem;line-height:1.2;font-weight:800;margin-top:2px}
+  .kpi .desc{font-size:.85rem;color:var(--ink-500);margin-top:2px}
+
+  /* KPIs fila 2 (3 columnas: Métricas | Caja | Columna derecha apilada) */
+  .kpis-2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:8px;}
+  @media (max-width: 992px){ .kpis-2{grid-template-columns:1fr;} }
+  .right-stack{display:grid;gap:16px;}
+
+  /* Métricas centradas y más bonitas */
+  .metrics-card{display:flex;flex-direction:column;align-items:center;text-align:center;}
+  .metrics-card .m-item{width:100%;padding:10px 0;border-bottom:1px dotted var(--line-200);}
+  .metrics-card .m-item:last-child{border-bottom:0}
+  .metrics-card .icon{font-size:22px;line-height:1;margin-bottom:6px;}
+  .metrics-card .m-title{font-size:.95rem;color:var(--ink-700);}
+  .metrics-card .val{font-weight:900;font-size:1.05rem;}
+  .metrics-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+
+  /* Caja (mini ER) */
+  .er-card .rowline{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line-200);}
+  .er-card .rowline:last-child{border-bottom:0}
+  .er-card .pos{color:#236a3b;font-weight:800;}
+  .er-card .neg{color:#8a1a1a;font-weight:800;}
+  .er-card .net{font-size:1.25rem;font-weight:900;}
+  .muted{color:var(--ink-500);}
+  .sep-12{height:12px}
+
+  /* Indicadores derechos (dos tarjetitas apiladas) */
+  .ind-card{
+    border:1px solid var(--line-200);border-radius:12px;background:#fff;
+    box-shadow:var(--shadow-1);padding:14px 16px;
+  }
+  .ind-card .label{font-weight:700;color:var(--ink-700);margin-bottom:6px;}
+  .ind-card .value{font-size:1.5rem;font-weight:800;line-height:1.2;}
+  .ind-card .hint{font-size:.85rem;color:var(--ink-500);margin-top:4px;}
+  .ind-card.ok   .value{color:#236a3b;}
+  .ind-card.warn .value{color:#8a1a1a;}
+
+  /* Tabla / comentarios */
+  .table th,.table td{vertical-align:middle}
+  .comments li{border-bottom:1px solid var(--line-200);padding:10px 0}
+  .comments li:last-child{border-bottom:0}
+  .s-tag{
+    display:inline-block;background:#eef2ff;color:#243b8a;
+    border:1px solid rgba(28,93,255,.25);border-radius:999px;
+    font-size:.75rem;font-weight:700;padding:.1rem .5rem;margin-right:.4rem
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% with rol=user.userprofile.rol|default_if_none:'' %}
+{% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
+<div class="page-shell">
+
+  <!-- Encabezado -->
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">Cierre de ruta — {{ ruta.nombre|default:"(sin nombre)" }} <small class="text-muted">#{{ ruta.id }}</small></h1>
+    <div class="actions">
+      <a class="btn btn-outline-secondary" href="{% url 'rutas:hoja' ruta.id %}">⬅️ Hoja de ruta</a>
+      <a class="btn btn-success" href="{% url 'rutas:exportar_cierre_xlsx' ruta.id %}">⬇️ Exportar Excel</a>
+      <a class="btn btn-outline-primary" href="{% url 'rutas:recorrido' ruta.id %}">🗺️ Ver recorrido</a>
+    </div>
+  </div>
+
+  <!-- Badges -->
+  <div class="mb-3">
+    {% if ruta.estado == "ACTIVA" %}
+      <span class="badge text-bg-success">Ruta ACTIVA</span>
+    {% else %}
+      <span class="badge text-bg-secondary">Ruta CERRADA</span>
+    {% endif %}
+    {% if ruta.vehiculo %}
+      <span class="badge text-bg-light text-dark">Vehículo: {% firstof ruta.vehiculo.placa ruta.vehiculo|stringformat:"s" "—" %}</span>
+    {% endif %}
+    {% if ruta.conductor %}
+      <span class="badge text-bg-light text-dark">Conductor: {% firstof ruta.conductor.get_full_name ruta.conductor.username "—" %}</span>
+    {% endif %}
+    {% if ruta.fecha_salida %}
+      <span class="badge text-bg-light text-dark">Salida: {{ ruta.fecha_salida|date:"Y-m-d" }}</span>
+    {% endif %}
+  </div>
+
+  <!-- KPIs fila 1 -->
+  <div class="kpis">
+    <div class="kpi">
+      <div class="label">Valor total de servicios</div>
+      <div class="value">{{ total_venta|default:0|money }}</div>
+      <div class="desc">Suma de {{ cierre.total_servicios|default:servicios|length }} servicios</div>
+    </div>
+
+    <div class="kpi">
+      <div class="label">Cobrado por conductor</div>
+      <div class="value">{{ cierre.total_cobrado|default:0|money }}</div>
+      <div class="desc">Pendiente por cobrar: {{ cierre.total_pendiente|default:0|money }}</div>
+    </div>
+
+    <div class="kpi">
+      <div class="label">Utilidad operativa</div>
+      <div class="value" style="color:{% if utilidad_operativa >= 0 %}#236a3b{% else %}#8a1a1a{% endif %};">
+        {{ utilidad_operativa|default:0|money }}
+      </div>
+      <div class="desc">Ventas − Gastos de la ruta</div>
+    </div>
+  </div>
+
+  <!-- KPIs fila 2: Métricas | Caja | (Cobrado + Pendiente) -->
+  <div class="kpis-2">
+    <!-- Métricas CENTRADAS -->
+    <div class="kpi metrics-card">
+      <div class="label">Métricas de recorrido</div>
+
+      <div class="m-item">
+        <div class="icon">⏱️</div>
+        <div class="m-title">Duración promedio por orden</div>
+        <div id="m-prom-dur" class="val">—</div>
+      </div>
+
+      <div class="m-item">
+        <div class="icon">🚗</div>
+        <div class="m-title">Distancia total aprox.</div>
+        <div id="m-dist" class="val">—</div>
+      </div>
+
+      <div class="metrics-actions">
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'rutas:recorrido' ruta.id %}">Ver recorrido</a>
+      </div>
+    </div>
+
+    <!-- Caja -->
+    <div class="kpi er-card">
+      <div class="label">Caja de ruta</div>
+      <div class="rowline">
+        <span class="muted">Base</span>
+        <span class="pos">{{ base_efectivo|default:0|money }}</span>
+      </div>
+      <div class="rowline">
+        <span class="muted">Ingresos en ruta</span>
+        <span class="pos">{{ ingresos_en_ruta|default:0|money }}</span>
+      </div>
+      <div class="rowline">
+        <span class="muted">Gastos</span>
+        <span class="neg">− {{ total_gastos|default:0|money }}</span>
+      </div>
+      <div class="sep-12"></div>
+      <div class="rowline">
+        <span class="muted">Efectivo a entregar</span>
+        <span class="net">{{ efectivo_entregar|default:0|money }}</span>
+      </div>
+      <div class="desc">
+        Efectivo a entregar = <strong>base</strong> + <strong>ingresos en ruta</strong> − <strong>gastos</strong>.<br>
+
+      </div>
+    </div>
+
+    <!-- Columna derecha apilada -->
+    <div class="right-stack">
+      <div class="ind-card ok">
+        <div class="label">Cobrado (total)</div>
+        <div class="value">{{ total_cobrado|default:0|money }}</div>
+        <div class="hint">Incluye cobros marcados como “Pagado” ya sea por conductor o por gerente.</div>
+      </div>
+
+      <div class="ind-card warn">
+        <div class="label">Pendiente de cobro tras el cierre</div>
+        <div class="value">{{ pendiente_cobro|default:0|money }}</div>
+        <div class="hint">Diferencia entre el valor de todos los servicios y lo cobrado a la fecha del cierre.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de servicios -->
+  <div class="card shadow-sm mt-2">
+    <div class="card-header">Servicios en la ruta</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped m-0">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Cliente</th>
+              <th>Origen → Destino</th>
+              <th class="text-end">Valor</th>
+              <th class="text-center">Pago</th>
+              <th class="text-center">Fechas</th>
+            </tr>
+          </thead>
+          <tbody id="srv-tbody">
+            {% for s in servicios %}
+            <tr
+              {% if s.recogido_en %} data-rgts="{{ s.recogido_en|date:'c' }}"{% endif %}
+              {% if s.entregado_en %} data-egts="{{ s.entregado_en|date:'c' }}"{% endif %}
+              {% if s.lat_recogida and s.lon_recogida %} data-rg="{{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}"{% endif %}
+              {% if s.lat_entrega and s.lon_entrega %} data-eg="{{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}"{% endif %}
+            >
+              <td>#{{ s.id }}</td>
+              <td>{% firstof s.cliente.nombre s.cliente "—" %}</td>
+              <td>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</td>
+              <td class="text-end">{{ s.valor|money }}</td>
+              <td class="text-center">
+                {% if s.estado_pago == "PEND" %}
+                  <span class="badge text-bg-secondary">Pendiente</span>
+                {% elif s.estado_pago == "ANT" %}
+                  <span class="badge text-bg-warning">Anticipo</span>
+                {% else %}
+                  <span class="badge text-bg-success">Pagado</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <small class="text-muted">
+                  {% if s.recogido_en %}R: {{ s.recogido_en|date:"Y-m-d H:i" }}{% endif %}
+                  {% if s.entregado_en %} · E: {{ s.entregado_en|date:"Y-m-d H:i" }}{% endif %}
+                </small>
+              </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="6" class="text-center text-muted py-3">Sin servicios en esta ruta.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comentarios -->
+  <div class="card shadow-sm mt-3">
+    <div class="card-header">Comentarios de los servicios</div>
+    <div class="card-body">
+      <ul class="list-unstyled comments m-0">
+        {% with hay=0 %}
+          {% for s in servicios %}
+            {% for c in s.comentarios.all %}
+              {% if hay == 0 %}{% widthratio 1 1 1 as hay %}{% endif %}
+              <li>
+                <span class="s-tag">{% firstof s.cliente.nombre s.cliente "Cliente" %}</span>
+                <strong>{{ c.autor.username|default:"(anónimo)" }}</strong>
+                <small class="text-muted">— {{ c.creado_en|date:"Y-m-d H:i" }}</small><br>
+                {{ c.texto|linebreaksbr }}
+              </li>
+            {% endfor %}
+          {% endfor %}
+          {% if hay == 0 %}
+            <li class="text-muted">No hubo comentarios en esta ruta.</li>
+          {% endif %}
+        {% endwith %}
+      </ul>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const rows = Array.from(document.querySelectorAll('#srv-tbody tr'));
+  if (!rows.length) return;
+
+  // Duración promedio por servicio (R→E)
+  let durMsSum = 0, durCount = 0;
+  rows.forEach(r=>{
+    const rg = r.dataset.rgts, eg = r.dataset.egts;
+    if (rg && eg){
+      const a = new Date(rg), b = new Date(eg);
+      const ms = b - a;
+      if (ms > 0){ durMsSum += ms; durCount++; }
+    }
+  });
+  const durEl = document.getElementById('m-prom-dur');
+  if (durEl){
+    if (durCount){
+      const avg = durMsSum / durCount;
+      const h = Math.floor(avg/3600000);
+      const m = Math.floor((avg%3600000)/60000);
+      const d = Math.floor(h/24);
+      const hr = h % 24;
+      durEl.textContent = (d? (d+'d '):'') + hr + 'h ' + m + 'm';
+    } else {
+      durEl.textContent = '—';
+    }
+  }
+
+  // Distancia total aprox. (haversine con puntos cronológicos R/E)
+  const pts = [];
+  rows.forEach(r=>{
+    if (r.dataset.rg && r.dataset.rgts){
+      const [lat,lon] = r.dataset.rg.split(',').map(parseFloat);
+      if (!isNaN(lat) && !isNaN(lon)) pts.push({t: new Date(r.dataset.rgts).getTime(), lat, lon});
+    }
+    if (r.dataset.eg && r.dataset.egts){
+      const [lat,lon] = r.dataset.eg.split(',').map(parseFloat);
+      if (!isNaN(lat) && !isNaN(lon)) pts.push({t: new Date(r.dataset.egts).getTime(), lat, lon});
+    }
+  });
+  pts.sort((a,b)=>a.t-b.t);
+  function haversineKm(a,b){
+    const R=6371, toRad=x=>x*Math.PI/180;
+    const dLat=toRad(b.lat-a.lat), dLon=toRad(b.lon-a.lon);
+    const A=Math.sin(dLat/2)**2 + Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;
+    const c=2*Math.atan2(Math.sqrt(A),Math.sqrt(1-A));
+    return R*c;
+  }
+  let dist=0;
+  for(let i=1;i<pts.length;i++){ dist += haversineKm(pts[i-1], pts[i]); }
+  const distEl = document.getElementById('m-dist');
+  if (distEl){ distEl.textContent = pts.length ? (dist.toFixed(1) + ' km (aprox.)') : '—'; }
+})();
+</script>
+
+{% else %}
+  <div class="alert alert-secondary">
+    Esta información de cierre no está disponible para tu rol.
+    <a href="{% url 'rutas:hoja' ruta.id %}" class="alert-link">Volver a la hoja de ruta</a>.
+  </div>
+{% endif %}
+{% endwith %}
+{% endblock %}

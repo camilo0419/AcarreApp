@@ -1,0 +1,76 @@
+{# templates/includes/navbar.html #}
+<header class="navbar">
+  <div class="container nav-inner">
+    <a class="brand" href="{% url 'rutas:list' %}">
+      <span class="dot"></span>
+      <span>AcarreApp</span>
+      {% if empresa_actual %}
+        <span class="empresa">· {{ empresa_actual.nombre }}</span>
+      {% endif %}
+    </a>
+
+    {% if request.user.is_authenticated %}
+      {# Detectar rol #}
+      {% with rol=request.user.userprofile.rol|default_if_none:'' %}
+        {% if request.user.is_superuser or request.user.is_staff or rol == 'GERENTE' %}
+          {# ---- Menú para GERENTE / STAFF ---- #}
+          <nav class="nav main-nav" aria-label="Navegación principal">
+            <a href="{% url 'servicios:mis' %}">Servicios</a>
+            <a href="{% url 'rutas:list' %}">Rutas</a>
+            <a href="{% url 'dashboard:index' %}">Dashboard</a>
+          </nav>
+        {% else %}
+          {# ---- Menú para CONDUCTOR ---- #}
+          <nav class="nav main-nav" aria-label="Navegación principal">
+            <a href="{% url 'rutas:list' %}">Rutas</a>
+          </nav>
+        {% endif %}
+
+        <div class="menu-right">
+          <button class="userchip" id="userchip" aria-haspopup="true" aria-expanded="false">
+            <span class="avatar">{{ request.user.get_full_name|default:request.user.username|first|upper }}</span>
+            <span class="meta">
+              <span class="name">{{ request.user.get_full_name|default:request.user.username }}</span>
+              {% if rol %}<span class="role">{{ rol|title }}</span>{% endif %}
+            </span>
+            <span class="caret">▾</span>
+          </button>
+
+          <div class="dropdown" id="userdropdown" hidden role="menu">
+            {# En gerente mostramos “Mis servicios”; en conductor, no #}
+            {% if request.user.is_superuser or request.user.is_staff or rol == 'GERENTE' %}
+              <a href="{% url 'servicios:mis' %}" role="menuitem">Mis servicios</a>
+              <div class="divider"></div>
+            {% endif %}
+            <a href="{% url 'logout' %}" class="dropdown-danger" role="menuitem">Salir</a>
+          </div>
+        </div>
+      {% endwith %}
+    {% else %}
+      <nav class="nav main-nav" aria-label="Navegación principal">
+        <a href="{% url 'login' %}">Iniciar sesión</a>
+      </nav>
+    {% endif %}
+  </div>
+</header>
+
+<script>
+(()=> {
+  const chip = document.getElementById('userchip');
+  const menu = document.getElementById('userdropdown');
+  if (!chip || !menu) return;
+
+  const close = () => { menu.hidden = true; chip.setAttribute('aria-expanded','false'); };
+  const toggle = (e) => {
+    e.stopPropagation();
+    if (menu.hidden) { menu.hidden = false; chip.setAttribute('aria-expanded','true'); }
+    else close();
+  };
+
+  chip.addEventListener('click', toggle);
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && !chip.contains(e.target) && !menu.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+})();
+</script>

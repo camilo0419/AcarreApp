@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+{% load l10n formatting %}
+{% block title %}Servicio #{{ object.id }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .page-shell{max-width:1100px;margin:0 auto;}
+  .gap-12{gap:12px;}
+  .cards-row{display:grid;grid-template-columns:1fr;gap:12px;}
+  @media (min-width: 992px){ .cards-row{grid-template-columns:1fr 1fr;} }
+
+  /* Línea con texto + botón a la derecha (Maps) */
+  .inline-map-row{display:flex;align-items:center;gap:10px;}
+  .inline-map-row .map-text{flex:1;min-width:0;word-break:break-word;}
+  .inline-map-row .map-btn{margin-left:auto;white-space:nowrap;}
+
+  /* Ubicaciones en una sola card, dos columnas */
+  .ubi-grid{display:grid;grid-template-columns:1fr;gap:14px;}
+  @media (min-width: 900px){ .ubi-grid{grid-template-columns:1fr 1fr;} }
+  .ubi-card h6{font-weight:600;margin-bottom:8px;}
+  .map-iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;box-shadow:var(--shadow-1);}
+  .btns-mini{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+
+  /* Pago: separar botón del input */
+  .btn-register{margin-top:8px;}
+
+  /* Estado operativo “pro” */
+  .op-wrap{
+    border:1px solid var(--line-200);
+    border-radius:12px;
+    padding:12px 14px;
+    background: linear-gradient(180deg,#fff, #fafbfd);
+    box-shadow: var(--shadow-1);
+  }
+  .op-item{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+  .op-icon{font-size:18px;line-height:1;}
+  .op-body{flex:1;}
+  .op-title{font-weight:600;}
+  .op-meta{color:var(--muted);font-size:.9rem;}
+  .pill{
+    display:inline-block;padding:.15rem .5rem;border-radius:999px;
+    font-size:.8rem;font-weight:600;
+    background:#eef2ff;color:#243b8a;
+  }
+  .pill.ok{background:#eaf7ef;color:#236a3b;}
+  .pill.wait{background:#fff6e6;color:#7a4d00;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">Servicio #{{ object.id }}</h1>
+    <div class="d-flex gap-2">
+      {% if object.ruta_id %}
+        <a class="btn btn-outline-secondary" href="{% url 'servicios:por_ruta' object.ruta_id %}">⬅️ Volver a la ruta</a>
+      {% else %}
+        <a class="btn btn-outline-secondary" href="{% url 'servicios:mis' %}">⬅️ Volver</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Badges -->
+  <div class="mb-2">
+    {% if object.ruta.estado == "ACTIVA" %}<span class="badge text-bg-success">Ruta ACTIVA</span>
+    {% else %}<span class="badge text-bg-secondary">Ruta CERRADA</span>{% endif %}
+
+    {% if object.estado_pago == "PAG" %}
+      <span class="badge text-bg-success">Servicio PAGADO</span>
+    {% elif object.estado_pago == "ANT" %}
+      <span class="badge text-bg-warning">Anticipo</span>
+    {% else %}
+      <span class="badge text-bg-secondary">Pendiente de pago</span>
+    {% endif %}
+
+    {% if object.entregado %}<span class="badge text-bg-primary">Entregado</span>
+    {% elif object.recogido %}<span class="badge text-bg-info">Recogido</span>
+    {% else %}<span class="badge text-bg-light text-dark">Pendiente de recogida</span>{% endif %}
+  </div>
+
+  <!-- Cards lado a lado -->
+  <div class="cards-row mb-2">
+    <!-- Resumen -->
+    <div class="card h-100">
+      <div class="card-header">Resumen del servicio</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-6">
+            <p><strong>Cliente:</strong><br>{{ object.cliente|default:"—" }}</p>
+            <p><strong>Ruta:</strong><br>#{{ object.ruta_id }} — {{ object.ruta.nombre|default:"(sin nombre)" }}</p>
+            <p><strong>Conductor:</strong><br>{% firstof object.ruta.conductor.get_full_name object.ruta.conductor.username "—" %}</p>
+            <p><strong>Vehículo:</strong><br>{{ object.ruta.vehiculo|default:"—" }}</p>
+          </div>
+          <div class="col-6">
+            <p class="mb-1"><strong>Origen:</strong></p>
+            <div class="inline-map-row mb-2">
+              <span class="map-text">{{ object.origen|default:"—" }}</span>
+              {% if object.origen %}
+                <a class="btn btn-sm btn-outline-secondary map-btn"
+                   target="_blank" rel="noopener"
+                   href="https://www.google.com/maps/search/?api=1&query={{ object.origen|urlencode }}">
+                  Abrir en Maps
+                </a>
+              {% endif %}
+            </div>
+
+            <p class="mb-1"><strong>Destino:</strong></p>
+            <div class="inline-map-row">
+              <span class="map-text">{{ object.destino|default:"—" }}</span>
+              {% if object.destino %}
+                <a class="btn btn-sm btn-outline-secondary map-btn"
+                   target="_blank" rel="noopener"
+                   href="https://www.google.com/maps/search/?api=1&query={{ object.destino|urlencode }}">
+                  Abrir en Maps
+                </a>
+              {% endif %}
+            </div>
+
+            <p class="mt-3"><strong>Fecha:</strong><br>
+              {% if object.recogido_en %}{{ object.recogido_en|date:"Y-m-d" }}
+              {% else %}{{ object.entregado_en|date:"Y-m-d"|default:"—" }}{% endif %}
+            </p>
+          </div>
+        </div>
+
+        <hr>
+
+        <div class="row">
+          <div class="col-6">
+            <p><strong>Valor:</strong><br>{{ object.valor|money }}</p>
+            {% if object.estado_pago == "PAG" %}
+              <p><strong>Total pagado:</strong><br>{{ object.valor|money }}</p>
+            {% elif object.estado_pago == "ANT" %}
+              <p><strong>Anticipo:</strong><br>{{ object.anticipo|money }}</p>
+            {% else %}
+              <p><strong>Anticipo:</strong><br>{{ object.anticipo|default:0|money }}</p>
+            {% endif %}
+          </div>
+          <div class="col-6">
+            <p><strong>Saldo:</strong><br>{{ object.saldo_cartera|money }}</p>
+          </div>
+        </div>
+
+        {% if object.notas %}
+          <hr><p><strong>Notas:</strong><br>{{ object.notas }}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Operación -->
+    <div class="card h-100">
+      <div class="card-header">Operación</div>
+      <div class="card-body">
+        {% with rol=user.userprofile.rol|default_if_none:'' %}
+          {% if object.ruta.estado == "ACTIVA" %}
+            {% if user.is_superuser or user.is_staff %}
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                {% if not object.recogido %}
+                  <form id="form-recogido" method="post" action="{% url 'servicios:marcar_recogido' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="recogido-lat">
+                    <input type="hidden" name="lon" id="recogido-lon">
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="enviarConUbicacion('form-recogido','recogido-lat','recogido-lon')">📦 Marcar recogido</button>
+                  </form>
+                {% endif %}
+                {% if object.recogido and not object.entregado %}
+                  <form id="form-entregado" method="post" action="{% url 'servicios:marcar_entregado' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="entregado-lat">
+                    <input type="hidden" name="lon" id="entregado-lon">
+                    <button type="button" class="btn btn-outline-success"
+                            onclick="enviarConUbicacion('form-entregado','entregado-lat','entregado-lon')">✅ Marcar entregado</button>
+                  </form>
+                {% endif %}
+              </div>
+
+              {% if not object.entregado or object.estado_pago != "PAG" %}
+                <div class="card border-0">
+                  <div class="card-header px-0">Registrar pago en efectivo</div>
+                  <div class="card-body px-0">
+                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                      {% csrf_token %}
+                      <div class="col-md-8">
+                        <input class="form-control" id="inp-monto" type="number" min="1" step="1"
+                               name="monto" placeholder="Valor recibido"
+                               {% if object.saldo_cartera > 0 %}max="{{ object.saldo_cartera }}"{% endif %}>
+                      </div>
+                      <div class="col-md-4 d-grid">
+                        <button class="btn btn-outline-success btn-register">Registrar</button>
+                      </div>
+                    </form>
+                    <small class="text-muted">Tope: {{ object.saldo_cartera|money }}. Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
+                  </div>
+                </div>
+              {% endif %}
+
+            {% elif rol == "CONDUCTOR" and object.ruta.conductor_id == user.id %}
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                {% if not object.recogido %}
+                  <form id="form-recogido" method="post" action="{% url 'servicios:marcar_recogido' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="recogido-lat">
+                    <input type="hidden" name="lon" id="recogido-lon">
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="enviarConUbicacion('form-recogido','recogido-lat','recogido-lon')">📦 Marcar recogido</button>
+                  </form>
+                {% endif %}
+                {% if object.recogido and not object.entregado %}
+                  <form id="form-entregado" method="post" action="{% url 'servicios:marcar_entregado' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="entregado-lat">
+                    <input type="hidden" name="lon" id="entregado-lon">
+                    <button type="button" class="btn btn-outline-success"
+                            onclick="enviarConUbicacion('form-entregado','entregado-lat','entregado-lon')">✅ Marcar entregado</button>
+                  </form>
+                {% endif %}
+              </div>
+
+              {% if not object.entregado or object.estado_pago != "PAG" %}
+                <div class="card border-0">
+                  <div class="card-header px-0">Registrar pago en efectivo</div>
+                  <div class="card-body px-0">
+                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                      {% csrf_token %}
+                      <div class="col-md-8">
+                        <input class="form-control" id="inp-monto" type="number" min="1" step="1"
+                               name="monto" placeholder="Valor recibido"
+                               {% if object.saldo_cartera > 0 %}max="{{ object.saldo_cartera }}"{% endif %}>
+                      </div>
+                      <div class="col-md-4 d-grid">
+                        <button class="btn btn-outline-success btn-register">Registrar</button>
+                      </div>
+                    </form>
+                    <small class="text-muted">Tope: {{ object.saldo_cartera|money }}. Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
+                  </div>
+                </div>
+              {% endif %}
+
+            {% else %}
+              <div class="alert alert-secondary mb-0">No tienes permisos para operar este servicio.</div>
+            {% endif %}
+          {% else %}
+            <div class="alert alert-secondary mb-3">La ruta está cerrada. No se pueden registrar acciones.</div>
+          {% endif %}
+        {% endwith %}
+
+        <!-- Estado operativo “pro” -->
+        <div class="op-wrap mt-3">
+          <div class="op-item">
+            <div class="op-icon">📦</div>
+            <div class="op-body">
+              <div class="op-title">Recogido
+                {% if object.recogido %}<span class="pill ok">Sí</span>{% else %}<span class="pill wait">No</span>{% endif %}
+              </div>
+              {% if object.recogido_en %}<div class="op-meta">{{ object.recogido_en|date:"Y-m-d H:i" }}</div>{% endif %}
+            </div>
+          </div>
+          <div class="op-item" style="margin-bottom:0;">
+            <div class="op-icon">✅</div>
+            <div class="op-body">
+              <div class="op-title">Entregado
+                {% if object.entregado %}<span class="pill ok">Sí</span>{% else %}<span class="pill wait">No</span>{% endif %}
+              </div>
+              {% if object.entregado_en %}<div class="op-meta">{{ object.entregado_en|date:"Y-m-d H:i" }}</div>{% endif %}
+            </div>
+          </div>
+        </div>
+
+        {% if object.recogido_en and object.entregado_en %}
+        <div class="border-top pt-3 mt-3">
+          <h6 class="text-muted">Métricas del recorrido</h6>
+          <div class="small">
+            ⏱️ Duración: <strong id="met-duracion">—</strong><br>
+            🚗 Distancia aprox.: <strong id="met-dist">—</strong>
+            {% if object.lat_recogida and object.lon_recogida and object.lat_entrega and object.lon_entrega %}
+              <div class="mt-2">
+                <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
+                   href="https://www.google.com/maps/dir/?api=1&origin={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}&destination={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}&travelmode=driving">
+                  Ver ruta en Google Maps
+                </a>
+              </div>
+            {% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Comentarios -->
+  <div class="card my-3">
+    <div class="card-header">Comentarios</div>
+    <div class="card-body">
+      <ul class="list-unstyled">
+        {% for c in object.comentarios.all %}
+          <li class="mb-2">
+            <strong>{{ c.autor.username|default:"(anónimo)" }}</strong>
+            <small class="text-muted">— {{ c.creado_en|date:"Y-m-d H:i" }}</small><br>
+            {{ c.texto|linebreaksbr }}
+          </li>
+        {% empty %}
+          <li class="text-muted">Sin comentarios.</li>
+        {% endfor %}
+      </ul>
+
+      <form method="post" action="{% url 'servicios:comentar' object.id %}" class="mt-2">
+        {% csrf_token %}
+        <div class="row g-2">
+          <div class="col-md-10">
+            <textarea name="texto" class="form-control" rows="2" placeholder="Escribe un comentario..."></textarea>
+          </div>
+          <div class="col-md-2 d-grid">
+            <button class="btn btn-outline-primary">Publicar</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Ubicaciones (UNA card, dos columnas) -->
+  {% if object.lat_recogida and object.lon_recogida or object.lat_entrega and object.lon_entrega %}
+  <div class="card my-3">
+    <div class="card-header">Ubicaciones</div>
+    <div class="card-body">
+      <div class="ubi-grid">
+        {% if object.lat_recogida and object.lon_recogida %}
+        <div class="ubi-card">
+          <h6>📍 Recogida</h6>
+          <iframe class="map-iframe"
+            src="https://www.google.com/maps?q={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}&hl=es;z=14&output=embed"
+            loading="lazy" allowfullscreen></iframe>
+          <div class="btns-mini">
+            <a class="btn btn-sm btn-outline-secondary" target="_blank"
+               href="https://www.google.com/maps/dir/?api=1&destination={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}">Navegar</a>
+            <a class="btn btn-sm btn-outline-secondary" target="_blank"
+               href="https://www.google.com/maps/search/?api=1&query={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}">Ver</a>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if object.lat_entrega and object.lon_entrega %}
+        <div class="ubi-card">
+          <h6>📦 Entrega</h6>
+          <iframe class="map-iframe"
+            src="https://www.google.com/maps?q={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}&hl=es;z=14&output=embed"
+            loading="lazy" allowfullscreen></iframe>
+          <div class="btns-mini">
+            <a class="btn btn-sm btn-outline-secondary" target="_blank"
+               href="https://www.google.com/maps/dir/?api=1&destination={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}">Navegar</a>
+            <a class="btn btn-sm btn-outline-secondary" target="_blank"
+               href="https://www.google.com/maps/search/?api=1&query={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}">Ver</a>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div> <!-- /.page-shell -->
+
+<script>
+function enviarConUbicacion(formId, latId, lonId) {
+  const form = document.getElementById(formId);
+  if (!navigator.geolocation) { form.submit(); return; }
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      document.getElementById(latId).value = pos.coords.latitude;
+      document.getElementById(lonId).value = pos.coords.longitude;
+      form.submit();
+    },
+    function() { form.submit(); },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+}
+
+/* Tope visual del pago */
+(function(){
+  const inp = document.getElementById('inp-monto');
+  if(!inp) return;
+  const maxAttr = inp.getAttribute('max');
+  if (maxAttr) {
+    const maxVal = parseInt(maxAttr, 10) || 0;
+    inp.placeholder = "Hasta " + new Intl.NumberFormat('es-CO').format(maxVal);
+    inp.addEventListener('input', function(){
+      let v = parseInt(this.value || '0', 10);
+      if (v > maxVal) this.value = maxVal;
+      if (v < 0) this.value = 0;
+    });
+  }
+})();
+
+/* Métricas (duración + distancia por Haversine) */
+(function(){
+  const durEl = document.getElementById('met-duracion');
+  const distEl = document.getElementById('met-dist');
+  if (!durEl && !distEl) return;
+
+  const recogidoISO = "{{ object.recogido_en|date:'c' }}";
+  const entregadoISO = "{{ object.entregado_en|date:'c' }}";
+
+  if (durEl && recogidoISO && entregadoISO) {
+    const a = new Date(recogidoISO), b = new Date(entregadoISO);
+    const ms = Math.max(0, b - a);
+    const horas = Math.floor(ms / 3600000);
+    const mins  = Math.floor((ms % 3600000) / 60000);
+    const dias  = Math.floor(horas / 24);
+    const horasRest = horas % 24;
+    let txt = "";
+    if (dias) txt += dias + "d ";
+    txt += horasRest + "h " + mins + "m";
+    durEl && (durEl.textContent = txt);
+  }
+
+  const lat1 = parseFloat("{{ object.lat_recogida|default_if_none:'' }}");
+  const lon1 = parseFloat("{{ object.lon_recogida|default_if_none:'' }}");
+  const lat2 = parseFloat("{{ object.lat_entrega|default_if_none:'' }}");
+  const lon2 = parseFloat("{{ object.lon_entrega|default_if_none:'' }}");
+
+  if (distEl && ![lat1,lon1,lat2,lon2].some(isNaN)) {
+    const R = 6371; const toRad = d => d*Math.PI/180;
+    const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+    const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    distEl.textContent = (R*c).toFixed(1) + " km (línea recta)";
+  }
+})();
+</script>
+{% endblock %}

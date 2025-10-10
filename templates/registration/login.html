@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Ingresar{% endblock %}
+
+{% block extra_css %}
+<style>
+  .auth-card{
+    max-width: 1100px; margin-inline: auto;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-2);
+    background: linear-gradient(180deg, rgba(155,172,216,0.18), rgba(155,172,216,0.06));
+    border: 1px solid var(--line-200);
+    padding: clamp(18px, 3vw, 28px);
+  }
+  .auth-grid{
+    display: grid; gap: clamp(14px, 2.2vw, 28px); align-items: center;
+  }
+  @media (min-width: 980px){
+    .auth-grid{ grid-template-columns: 1.1fr 0.9fr; }
+  }
+
+  /* >>> AUMENTO DE TAMAÑO DEL LOGO Y FAVICON FLOTANTE <<< */
+  .auth-aside{
+    position: relative;        /* para posicionar el favicon encima */
+    display: flex; align-items: center; justify-content: center;
+    min-height: 260px;
+  }
+  .auth-logo{
+    /* más grande que antes */
+    width: clamp(240px, 36vw, 420px);
+    height: auto; display:block;
+    filter: drop-shadow(0 10px 30px rgba(17,17,68,0.18));
+  }
+  .auth-favicon{
+    position: absolute; right: -6px; top: -6px;
+    width: 44px; height: 44px;
+    background: #fff;
+    border: 1px solid var(--line-200);
+    border-radius: 12px;
+    box-shadow: var(--shadow-1);
+    padding: 6px;
+  }
+  @media (max-width: 979px){
+    .auth-favicon{ right: 10px; top: 10px; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="auth-card">
+  <div class="auth-grid">
+    <!-- Columna izquierda: formulario -->
+    <div>
+      <h1 class="h1">Ingresar a AcarreApp</h1>
+
+      {% if form.errors or form.non_field_errors %}
+        <div class="card" style="margin-top:10px;border-left:6px solid var(--st-error);">
+          <div class="card-body">Usuario o contraseña inválidos. Inténtalo de nuevo.</div>
+        </div>
+      {% endif %}
+
+      <form method="post" action="{% url 'login' %}" style="margin-top:14px;">
+        {% csrf_token %}
+
+        <div class="form-row">
+          <label for="id_username">Usuario</label>
+          <input class="input" id="id_username" type="text" name="username"
+                 value="{{ form.username.value|default_if_none:'' }}"
+                 autofocus required autocomplete="username">
+        </div>
+
+        <div class="form-row" style="margin-top:10px;">
+          <label for="id_password">Contraseña</label>
+          <input class="input" id="id_password" type="password" name="password"
+                 required autocomplete="current-password">
+        </div>
+
+        {% if next %}
+          <input type="hidden" name="next" value="{{ next }}">
+        {% endif %}
+
+        <button class="btn btn-primary w-100" style="margin-top:16px;">Entrar</button>
+      </form>
+    </div>
+
+    <!-- Columna derecha: logo grande + favicon -->
+    <div class="auth-aside">
+      <img src="{% static 'icons/Logo.png' %}" alt="AcarreApp" class="auth-logo">
+    </div>
+  </div>
+</section>
+{% endblock %}

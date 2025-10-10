@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Sesión cerrada{% endblock %}
+
+{% block content %}
+  <div class="section-hero round-lg shadow-2 max-w-md">
+    <h1 class="h1">Sesión cerrada</h1>
+    <p class="text-muted">Has salido correctamente.</p>
+    <a class="btn btn-primary" href="{% url 'login' %}">Volver a ingresar</a>
+  </div>
+{% endblock %}

@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load l10n formatting %}
+{% block title %}Servicios de la ruta #{{ ruta.id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Servicios — Ruta #{{ ruta.id }} {{ ruta.nombre|default:"" }}</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">⬅️ Rutas</a>
+    <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.id %}">🧾 Hoja de ruta</a>
+    {% if es_gerente and ruta.estado == 'ACTIVA' %}
+      <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.id }}">➕ Agregar servicio</a>
+    {% endif %}
+  </div>
+</div>
+
+<p class="text-muted">
+  <strong>Fecha:</strong> {{ ruta.fecha_salida|date:"Y-m-d" }} —
+  <strong>Vehículo:</strong> {{ ruta.vehiculo|default:"—" }} —
+  <strong>Conductor:</strong> {{ ruta.conductor.username|default:"—" }} —
+  <strong>Estado:</strong>
+  {% if ruta.estado == 'ACTIVA' %}<span class="badge text-bg-success">ACTIVA</span>
+  {% else %}<span class="badge text-bg-secondary">CERRADA</span>{% endif %}
+</p>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+      <thead class="table-light">
+        <tr>
+          <th>#</th>
+          <th>Cliente</th>
+          <th>Origen → Destino</th>
+          <th class="text-end">Valor</th>
+          <th>Pago</th>
+          <th>Estado</th>
+          <th class="text-center">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in servicios %}
+          <tr>
+            <td>{{ s.id }}</td>
+            <td>{{ s.cliente }}</td>
+            <td>
+              <small>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</small>
+              <div class="small">
+                {% if s.lat_recogida and s.lon_recogida %}
+                  <a class="link-secondary" target="_blank"
+                     href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">📍 Ir a recogida</a>
+                  · <a class="link-secondary" target="_blank"
+                       href="https://www.google.com/maps/search/?api=1&query={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">🔎 Ver</a>
+                {% endif %}
+                {% if s.lat_entrega and s.lon_entrega %}
+                  · <a class="link-secondary" target="_blank"
+                       href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">📦 Ir a entrega</a>
+                  <a class="link-secondary" target="_blank"
+                       href="https://www.google.com/maps/search/?api=1&query={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">🔎 Ver</a>
+                {% endif %}
+              </div>
+            </td>
+            <td class="text-end">{{ s.valor|money }}</td>
+            <td>
+              {% if s.estado_pago == 'PAG' %}
+                <span class="badge text-bg-success">Pagado</span>
+              {% elif s.estado_pago == 'ANT' %}
+                <span class="badge text-bg-warning">Anticipo {{ s.anticipo|money }}</span>
+              {% else %}
+                <span class="badge text-bg-secondary">Pendiente</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.entregado %}✅ Entregado
+              {% elif s.recogido %}📦 En ruta
+              {% else %}⏳ Pendiente
+              {% endif %}
+              <div class="small text-muted">
+                {% if s.recogido_en %}Recogido: {{ s.recogido_en|date:"Y-m-d H:i" }}{% endif %}
+                {% if s.entregado_en %} · Entregado: {{ s.entregado_en|date:"Y-m-d H:i" }}{% endif %}
+              </div>
+            </td>
+            <td class="text-center">
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'servicios:detail' s.id %}">Detalle</a>
+
+              {% if ruta.estado == 'ACTIVA' %}
+                {% if es_gerente or es_conductor %}
+                  {% if not s.recogido %}
+                    <form method="post" action="{% url 'servicios:marcar_recogido' s.id %}" class="d-inline">
+                      {% csrf_token %}<button class="btn btn-sm btn-outline-info">Marcar recogido</button>
+                    </form>
+                  {% endif %}
+                  {% if s.recogido and not s.entregado %}
+                    <form method="post" action="{% url 'servicios:marcar_entregado' s.id %}" class="d-inline">
+                      {% csrf_token %}<button class="btn btn-sm btn-outline-success">Marcar entregado</button>
+                    </form>
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="7" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,51 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
+  <div class="container-fluid">
+    <a class="navbar-brand fw-bold" href="/">🚛 AcarreApp</a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#nav">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="nav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        {% if user.is_authenticated %}
+          <li class="nav-item"><a class="nav-link" href="/rutas/">Rutas</a></li>
+          <li class="nav-item"><a class="nav-link" href="/servicios/mis/">Mis servicios</a></li>
+
+          {% with rol=user.userprofile.rol|default_if_none:'' %}
+            {% if user.is_superuser or user.is_staff or rol == 'GERENTE' %}
+              <li class="nav-item"><a class="nav-link" href="/cartera/">Cartera</a></li>
+            {% endif %}
+          {% endwith %}
+
+          {% if user.is_superuser or user.is_staff %}
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                Administración
+              </a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="/rutas/crear/">➕ Nueva ruta</a></li>
+                <li><a class="dropdown-item" href="/servicios/crear/">➕ Nuevo servicio</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="/admin/">Panel admin</a></li>
+              </ul>
+            </li>
+          {% endif %}
+        {% endif %}
+      </ul>
+
+      <div class="d-flex align-items-center gap-3">
+        {% if empresa_actual %}
+          <span class="navbar-text text-light small">{{ empresa_actual.nombre }}</span>
+        {% endif %}
+
+        {% if user.is_authenticated %}
+          <span class="navbar-text text-light small">👤 {{ user.username }}</span>
+          <a class="btn btn-outline-light btn-sm" href="/accounts/logout/">Salir</a>
+        {% else %}
+          <a class="btn btn-primary btn-sm" href="/accounts/login/">Ingresar</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</nav>

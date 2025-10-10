@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Crear ruta{% endblock %}
+{% block content %}
+<h1>Crear ruta</h1>
+<form method="post" class="card card-body">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button class="btn btn-primary">Guardar</button>
+  <a href="{% url 'rutas:list' %}" class="btn btn-light">Cancelar</a>
+</form>
+{% endblock %}

@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% load humanize %}
+{% block title %}Hoja de ruta — {{ ruta.nombre|default:"#"|add:ruta.id|stringformat:"s" }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">
+    Hoja de ruta — {{ ruta.nombre|default:"(sin nombre)" }} <small class="text-muted">#{{ ruta.id }}</small>
+  </h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary" href="{% url 'servicios:por_ruta' ruta.id %}">📋 Ver servicios (lista)</a>
+    <a class="btn btn-outline-success" href="{% url 'rutas:cierre_resumen' ruta.id %}">📈 Resumen de cierre</a>
+    {% if user.is_superuser or user.is_staff %}
+      {% if ruta.estado == "ACTIVA" %}
+        <a class="btn btn-outline-danger" href="{% url 'rutas:cerrar' ruta.id %}">🔒 Cerrar ruta</a>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<!-- Badges de estado -->
+<div class="mb-3">
+  {% if ruta.estado == "ACTIVA" %}
+    <span class="badge text-bg-success">Ruta ACTIVA</span>
+  {% else %}
+    <span class="badge text-bg-secondary">Ruta CERRADA</span>
+  {% endif %}
+  {% if ruta.vehiculo %}<span class="badge text-bg-light text-dark">Vehículo: {{ ruta.vehiculo }}</span>{% endif %}
+  {% if ruta.conductor %}<span class="badge text-bg-light text-dark">Conductor: {{ ruta.conductor.username|default:rut a.conductor }}</span>{% endif %}
+  {% if ruta.fecha_salida %}<span class="badge text-bg-light text-dark">Salida: {{ ruta.fecha_salida|date:"Y-m-d H:i" }}</span>{% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- Columna izquierda: Servicios -->
+  <div class="col-lg-7">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Servicios en la ruta</span>
+        <small class="text-muted">Total: {{ servicios|length }}</small>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="text-center">ID</th>
+                <th>Cliente</th>
+                <th>Origen → Destino</th>
+                <th class="text-end">Valor</th>
+                <th class="text-center">Pago</th>
+                <th class="text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in servicios %}
+              <tr>
+                <td class="text-center">#{{ s.id }}</td>
+                <td>{{ s.cliente|default:"—" }}</td>
+                <td>{{ s.origen }} → {{ s.destino }}</td>
+                <td class="text-end">{{ s.valor|money }}</td>
+                <td class="text-center">
+                  {% if s.estado_pago == "PEND" %}
+                    <span class="badge text-bg-secondary">Pendiente</span>
+                  {% elif s.estado_pago == "ANT" %}
+                    <span class="badge text-bg-warning">Anticipo</span>
+                  {% else %}
+                    <span class="badge text-bg-success">Pagado</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <a class="btn btn-sm btn-outline-primary" href="{% url 'servicios:detail' s.id %}">Detalle</a>
+                </td>
+              </tr>
+              {% empty %}
+              <tr>
+                <td colspan="6" class="text-center text-muted py-4">Sin servicios.</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Columna derecha: Caja -->
+  <div class="col-lg-5">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Caja de ruta</span>
+        <small class="text-muted">
+          Base efectivo: <strong>{{ ruta.base_efectivo|default:0|money }}</strong>
+        </small>
+      </div>
+      <div class="card-body">
+        <!-- Totales -->
+        <div class="row g-3 mb-3">
+          <div class="col-4">
+            <div class="border rounded p-2 h-100">
+              <div class="text-muted small">Ingresos</div>
+              <div class="fs-5">{{ total_ingresos|default_if_none:0|money }}</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2 h-100">
+              <div class="text-muted small">Gastos</div>
+              <div class="fs-5">{{ total_gastos|default_if_none:0|money }}</div>
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="border rounded p-2 h-100">
+              <div class="text-muted small">Caja</div>
+              {% with base=ruta.base_efectivo|default_if_none:0 ingresos=total_ingresos|default_if_none:0 gastos=total_gastos|default_if_none:0 %}
+                {% with caja=base|add:ingresos|add:-gastos %}
+                  <div class="fs-5">{{ caja|money }}</div>
+                {% endwith %}
+              {% endwith %}
+            </div>
+          </div>
+        </div>
+
+        {% with rol=user.userprofile.rol|default_if_none:'' %}
+          {% if ruta.estado == "ACTIVA" and (user.is_superuser or user.is_staff or rol == "GERENTE" or rol == "CONDUCTOR") %}
+          <!-- Formularios de registro -->
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="card border-0">
+                <div class="card-header px-0">Registrar ingreso</div>
+                <div class="card-body px-0">
+                  <form method="post" action="{% url 'rutas:ingreso' ruta.id %}" class="row g-2">
+                    {% csrf_token %}
+                    <div class="col-12">
+                      <input class="form-control" name="descripcion" type="text" placeholder="Descripción" required>
+                    </div>
+                    <div class="col-12">
+                      <input class="form-control" name="valor" type="number" min="1" step="1" placeholder="Valor" required>
+                    </div>
+                    <div class="col-12 d-grid">
+                      <button class="btn btn-outline-success">Guardar ingreso</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+
+            <div class="col-md-6">
+              <div class="card border-0">
+                <div class="card-header px-0">Registrar gasto</div>
+                <div class="card-body px-0">
+                  <form method="post" action="{% url 'rutas:gasto' ruta.id %}" class="row g-2">
+                    {% csrf_token %}
+                    <div class="col-12">
+                      <input class="form-control" name="descripcion" type="text" placeholder="Descripción" required>
+                    </div>
+                    <div class="col-12">
+                      <input class="form-control" name="valor" type="number" min="1" step="1" placeholder="Valor" required>
+                    </div>
+                    <div class="col-12 d-grid">
+                      <button class="btn btn-outline-danger">Guardar gasto</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+        {% endwith %}
+
+        <!-- Listados de movimientos -->
+        <hr>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <h6 class="text-muted">Ingresos</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle">
+                <thead>
+                  <tr>
+                    <th>Descripción</th>
+                    <th class="text-end">Valor</th>
+                    <th class="text-muted small">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in ruta.movimientos.all %}
+                    {% if m.tipo == "INGRESO" %}
+                      <tr>
+                        <td>{{ m.descripcion|default:"(sin detalle)" }}</td>
+                        <td class="text-end">{{ m.valor|money }}</td>
+                        <td class="text-muted small">{{ m.creado_en|date:"Y-m-d H:i" }}</td>
+                      </tr>
+                    {% endif %}
+                  {% empty %}
+                    <tr><td colspan="3" class="text-center text-muted">Sin movimientos.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <h6 class="text-muted">Gastos</h6>
+            <div class="table-responsive">
+              <table class="table table-sm table-striped align-middle">
+                <thead>
+                  <tr>
+                    <th>Descripción</th>
+                    <th class="text-end">Valor</th>
+                    <th class="text-muted small">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for m in ruta.movimientos.all %}
+                    {% if m.tipo == "GASTO" %}
+                      <tr>
+                        <td>{{ m.descripcion|default:"(sin detalle)" }}</td>
+                        <td class="text-end">{{ m.valor|money }}</td>
+                        <td class="text-muted small">{{ m.creado_en|date:"Y-m-d H:i" }}</td>
+                      </tr>
+                    {% endif %}
+                  {% empty %}
+                    <tr><td colspan="3" class="text-center text-muted">Sin movimientos.</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div> <!-- card-body -->
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+# 🧊 Entornos virtuales
+.venv/
+venv/
+env/
+ENV/
+
+# 🔐 Archivos de entorno
+.env
+*.env
+
+# 💾 Base de datos local
+db.sqlite3
+
+# 🐍 Archivos compilados de Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ⚙️ Configuraciones de IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 🧱 Archivos de dependencias o build
+*.egg-info/
+build/
+dist/
+pip-wheel-metadata/
+
+# 📁 Archivos de logs o temporales
+*.log
+
+# 🎨 Archivos generados
+staticfiles/
+media/

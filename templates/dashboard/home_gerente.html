@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Inicio{% endblock %}
+
+{% block content %}
+<section class="section-hero round-lg shadow-2">
+  <h1 class="h1">Inicio del Gerente</h1>
+  <p class="text-muted">Resumen rápido y accesos directos · {{ hoy|date:"d M Y" }}</p>
+
+  <div class="form-row cols-2" style="margin-top:14px;">
+    <a class="btn btn-accent" href="{% url 'rutas:crear' %}">➕ Crear ruta</a>
+    <a class="btn btn-primary" href="{% url 'servicios:crear' %}">➕ Crear servicio</a>
+  </div>
+</section>
+
+<div class="form-row cols-2" style="margin-top:16px;">
+  <div class="card">
+    <div class="card-header">KPIs hoy</div>
+    <div class="card-body">
+      <div class="form-row cols-2">
+        <div class="card bg-soft round-lg">
+          <div class="card-body">
+            <h3 class="h3">Rutas activas</h3>
+            <div class="h1">{{ kpi_rutas_activas }}</div>
+          </div>
+        </div>
+        <div class="card bg-soft round-lg">
+          <div class="card-body">
+            <h3 class="h3">Servicios activos</h3>
+            <div class="h1">{{ kpi_servicios_activos }}</div>
+          </div>
+        </div>
+      </div>
+      <div class="card bg-soft round-lg" style="margin-top:12px;">
+        <div class="card-body">
+          <h3 class="h3">Pendientes de entrega</h3>
+          <div class="h1">{{ kpi_pendientes_entrega }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Accesos rápidos</div>
+    <div class="card-body">
+      <div class="form-row">
+        <a class="btn btn-outline" href="{% url 'rutas:list' %}">📋 Ver rutas</a>
+        <a class="btn btn-outline" href="{% url 'servicios:mis' %}">📦 Ver servicios</a>
+        <a class="btn btn-outline" href="{% url 'rutas:list' %}?estado=ACTIVA">🚚 Rutas activas</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <div class="card-header">Rutas activas</div>
+  <div class="card-body">
+    {% if rutas_activas %}
+      <table class="table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Fecha salida</th>
+            <th>Vehículo</th>
+            <th>Conductor</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rutas_activas %}
+            <tr>
+              <td>#{{ r.id }}</td>
+              <td>{{ r.nombre|default:"(sin nombre)" }}</td>
+              <td>{{ r.fecha_salida|date:"Y-m-d" }}</td>
+              <td>{% firstof r.vehiculo.placa r.vehiculo|stringformat:"s" "—" %}</td>
+              <td>{% firstof r.conductor.get_full_name r.conductor.username "—" %}</td>
+              <td class="table-row-actions">
+                {# Ver = lista de servicios de esta ruta #}
+                <a class="btn btn-quiet" href="{% url 'servicios:por_ruta' r.id %}">Ver</a>
+                {# Hoja = detalle de la ruta #}
+                <a class="btn btn-quiet" href="{% url 'rutas:hoja' r.id %}">Hoja</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-muted">No hay rutas activas por ahora.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

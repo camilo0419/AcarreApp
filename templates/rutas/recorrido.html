@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Recorrido — Ruta #{{ ruta.id }}{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  .page-shell{max-width:1100px;margin:0 auto;}
+  #map{height:70vh; border:1px solid var(--line-200); border-radius:12px; box-shadow: var(--shadow-1);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-shell">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="m-0">Recorrido — Ruta #{{ ruta.id }}</h1>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{% url 'rutas:cierre_resumen' ruta.id %}">⬅️ Volver al cierre</a>
+    </div>
+  </div>
+
+  <div id="map"></div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  const puntos = {{ puntos_json|safe }}; // [{lat,lon,ts,tipo,label},...]
+
+  const map = L.map('map');
+  const tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  if (!puntos.length){
+    map.setView([4.65,-74.1], 11);
+  } else {
+    const latlngs = puntos.map(p => [p.lat, p.lon]);
+
+    // markers
+    puntos.forEach((p,i)=>{
+      const isFirst = (i===0);
+      const isLast  = (i===puntos.length-1);
+      const icon = L.divIcon({
+        className:'cust-marker',
+        html:`<div style="
+          background:${p.tipo==='recogida'?'#2563eb':'#16a34a'};
+          color:#fff;padding:6px 8px;border-radius:999px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.15);
+          ">${isFirst?'A':(isLast?'B':(p.tipo==='recogida'?'R':'E'))}</div>`
+      });
+      L.marker([p.lat,p.lon], {icon}).addTo(map).bindPopup(`<strong>${p.label}</strong><br><small>${p.ts}</small>`);
+    });
+
+    // polyline
+    const pl = L.polyline(latlngs, {weight:4, opacity:.85});
+    pl.addTo(map);
+    map.fitBounds(pl.getBounds(), {padding:[30,30]});
+  }
+</script>
+{% endblock %}

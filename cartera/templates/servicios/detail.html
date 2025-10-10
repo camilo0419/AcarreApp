@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+{% load l10n formatting %}
+{% block title %}Servicio #{{ object.id }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Servicio #{{ object.id }}</h1>
+  <div class="d-flex gap-2">
+    {% if object.ruta_id %}
+      <a class="btn btn-outline-secondary" href="{% url 'servicios:por_ruta' object.ruta_id %}">⬅️ Volver a la ruta</a>
+    {% else %}
+      <a class="btn btn-outline-secondary" href="{% url 'servicios:mis' %}">⬅️ Volver</a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Alertas -->
+<div class="mb-2">
+  {% if object.ruta.estado == "ACTIVA" %}<span class="badge text-bg-success">Ruta ACTIVA</span>
+  {% else %}<span class="badge text-bg-secondary">Ruta CERRADA</span>{% endif %}
+
+  {% if object.estado_pago == "PAG" %}
+    <span class="badge text-bg-success">Servicio PAGADO</span>
+  {% elif object.estado_pago == "ANT" %}
+    <span class="badge text-bg-warning">Anticipo</span>
+  {% else %}
+    <span class="badge text-bg-secondary">Pendiente de pago</span>
+  {% endif %}
+
+  {% if object.entregado %}<span class="badge text-bg-primary">Entregado</span>
+  {% elif object.recogido %}<span class="badge text-bg-info">Recogido</span>
+  {% else %}<span class="badge text-bg-light text-dark">Pendiente de recogida</span>{% endif %}
+</div>
+
+<div class="row g-3">
+  <!-- Resumen -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Resumen del servicio</div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-6">
+            <p><strong>Cliente:</strong><br>{{ object.cliente|default:"—" }}</p>
+            <p><strong>Ruta:</strong><br>#{{ object.ruta_id }} — {{ object.ruta.nombre|default:"(sin nombre)" }}</p>
+            <p><strong>Conductor:</strong><br>{{ object.ruta.conductor.username|default:"—" }}</p>
+            <p><strong>Vehículo:</strong><br>{{ object.ruta.vehiculo|default:"—" }}</p>
+          </div>
+          <div class="col-6">
+            <p><strong>Origen:</strong><br>{{ object.origen|default:"—" }}</p>
+            <p><strong>Destino:</strong><br>{{ object.destino|default:"—" }}</p>
+            <p><strong>Fecha:</strong><br>
+              {% if object.recogido_en %}{{ object.recogido_en|date:"Y-m-d" }}
+              {% else %}{{ object.entregado_en|date:"Y-m-d"|default:"—" }}{% endif %}
+            </p>
+          </div>
+        </div>
+        <hr>
+        <div class="row">
+          <div class="col-6">
+            <p><strong>Valor:</strong><br>{{ object.valor|money }}</p>
+
+            {% if object.estado_pago == "PAG" %}
+              <p><strong>Total pagado:</strong><br>{{ object.valor|money }}</p>
+            {% elif object.estado_pago == "ANT" %}
+              <p><strong>Anticipo:</strong><br>{{ object.anticipo|money }}</p>
+            {% else %}
+              <p><strong>Anticipo:</strong><br>{{ object.anticipo|default:0|money }}</p>
+            {% endif %}
+          </div>
+
+          <div class="col-6">
+            <p><strong>Saldo:</strong><br>{{ object.saldo_cartera|money }}</p>
+          </div>
+        </div>
+
+        {% if object.notas %}
+          <hr><p><strong>Notas:</strong><br>{{ object.notas }}</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Operación -->
+  <div class="col-lg-6">
+    <div class="card h-100">
+      <div class="card-header">Operación</div>
+      <div class="card-body">
+        {% with rol=user.userprofile.rol|default_if_none:'' %}
+          {% if object.ruta.estado == "ACTIVA" %}
+            {# --- Bloque para staff/superuser --- #}
+            {% if user.is_superuser or user.is_staff %}
+              <div class="d-flex flex-wrap gap-2 mb-3">
+                {% if not object.recogido %}
+                  <form id="form-recogido" method="post" action="{% url 'servicios:marcar_recogido' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="recogido-lat">
+                    <input type="hidden" name="lon" id="recogido-lon">
+                    <button type="button" class="btn btn-outline-primary"
+                            onclick="enviarConUbicacion('form-recogido','recogido-lat','recogido-lon')">📦 Marcar recogido</button>
+                  </form>
+                {% endif %}
+                {% if object.recogido and not object.entregado %}
+                  <form id="form-entregado" method="post" action="{% url 'servicios:marcar_entregado' object.id %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="lat" id="entregado-lat">
+                    <input type="hidden" name="lon" id="entregado-lon">
+                    <button type="button" class="btn btn-outline-success"
+                            onclick="enviarConUbicacion('form-entregado','entregado-lat','entregado-lon')">✅ Marcar entregado</button>
+                  </form>
+                {% endif %}
+              </div>
+
+              {% if not object.entregado or object.estado_pago != "PAG" %}
+              <div class="card border-0">
+                <div class="card-header px-0">Registrar pago en efectivo</div>
+                <div class="card-body px-0">
+                  <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                    {% csrf_token %}
+                    <div class="col-md-8">
+                      <input class="form-control" type="number" min="1" step="1" name="monto" placeholder="Valor recibido">
+                    </div>
+                    <div class="col-md-4 d-grid">
+                      <button class="btn btn-outline-success">Registrar</button>
+                    </div>
+                  </form>
+                  <small class="text-muted">Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
+                </div>
+              </div>
+              {% endif %}
+
+            {# --- Bloque para conductor dueño de la ruta --- #}
+            {% else %}
+              {% if rol == "CONDUCTOR" and object.ruta.conductor_id == user.id %}
+                <div class="d-flex flex-wrap gap-2 mb-3">
+                  {% if not object.recogido %}
+                    <form id="form-recogido" method="post" action="{% url 'servicios:marcar_recogido' object.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="lat" id="recogido-lat">
+                      <input type="hidden" name="lon" id="recogido-lon">
+                      <button type="button" class="btn btn-outline-primary"
+                              onclick="enviarConUbicacion('form-recogido','recogido-lat','recogido-lon')">📦 Marcar recogido</button>
+                    </form>
+                  {% endif %}
+                  {% if object.recogido and not object.entregado %}
+                    <form id="form-entregado" method="post" action="{% url 'servicios:marcar_entregado' object.id %}">
+                      {% csrf_token %}
+                      <input type="hidden" name="lat" id="entregado-lat">
+                      <input type="hidden" name="lon" id="entregado-lon">
+                      <button type="button" class="btn btn-outline-success"
+                              onclick="enviarConUbicacion('form-entregado','entregado-lat','entregado-lon')">✅ Marcar entregado</button>
+                    </form>
+                  {% endif %}
+                </div>
+
+                {% if not object.entregado or object.estado_pago != "PAG" %}
+                <div class="card border-0">
+                  <div class="card-header px-0">Registrar pago en efectivo</div>
+                  <div class="card-body px-0">
+                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                      {% csrf_token %}
+                      <div class="col-md-8">
+                        <input class="form-control" type="number" min="1" step="1" name="monto" placeholder="Valor recibido">
+                      </div>
+                      <div class="col-md-4 d-grid">
+                        <button class="btn btn-outline-success">Registrar</button>
+                      </div>
+                    </form>
+                    <small class="text-muted">Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
+                  </div>
+                </div>
+                {% endif %}
+              {% else %}
+                <div class="alert alert-secondary mb-0">No tienes permisos para operar este servicio.</div>
+              {% endif %}
+            {% endif %}
+          {% else %}
+            <div class="alert alert-secondary mb-3">La ruta está cerrada. No se pueden registrar acciones.</div>
+          {% endif %}
+        {% endwith %}
+
+        {# Resumen operativo siempre visible #}
+        <div class="border-top pt-3 mt-3">
+          <h6 class="text-muted">Estado operativo</h6>
+          <ul class="list-unstyled mb-2">
+            <li>Recogido: <strong>{% if object.recogido %}Sí{% else %}No{% endif %}</strong>
+              {% if object.recogido_en %}<small class="text-muted"> — {{ object.recogido_en|date:"Y-m-d H:i" }}</small>{% endif %}
+            </li>
+            <li>Entregado: <strong>{% if object.entregado %}Sí{% else %}No{% endif %}</strong>
+              {% if object.entregado_en %}<small class="text-muted"> — {{ object.entregado_en|date:"Y-m-d H:i" }}</small>{% endif %}
+            </li>
+          </ul>
+          {% if object.lat_recogida and object.lon_recogida %}
+            <div class="small mb-1">📍 Recogida: {{ object.lat_recogida }}, {{ object.lon_recogida }}</div>
+          {% endif %}
+          {% if object.lat_entrega and object.lon_entrega %}
+            <div class="small mb-1">📦 Entrega: {{ object.lat_entrega }}, {{ object.lon_entrega }}</div>
+          {% endif %}
+        </div>
+
+        <hr>
+
+        {% with rol=user.userprofile.rol|default_if_none:'' %}
+          {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
+            <div class="d-flex flex-wrap gap-2">
+              <a class="btn btn-outline-secondary" href="{% url 'servicios:editar' object.id %}">✏️ Editar</a>
+              <form method="post" action="{% url 'servicios:eliminar' object.id %}" onsubmit="return confirm('¿Eliminar este servicio?');">
+                {% csrf_token %}
+                <button class="btn btn-outline-danger">🗑️ Eliminar</button>
+              </form>
+              {% if object.estado_pago != "PAG" %}
+                <form method="post" action="{% url 'servicios:marcar_pagado_gerente' object.id %}">
+                  {% csrf_token %}
+                  <button class="btn btn-outline-dark">✔️ Marcar pagado (sin afectar caja)</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Comentarios -->
+<div class="card my-3">
+  <div class="card-header">Comentarios</div>
+  <div class="card-body">
+    <ul class="list-unstyled">
+      {% for c in object.comentarios.all %}
+        <li class="mb-2">
+          <strong>{{ c.autor.username|default:"(anónimo)" }}</strong>
+          <small class="text-muted">— {{ c.creado_en|date:"Y-m-d H:i" }}</small><br>
+          {{ c.texto|linebreaksbr }}
+        </li>
+      {% empty %}
+        <li class="text-muted">Sin comentarios.</li>
+      {% endfor %}
+    </ul>
+
+    <form method="post" action="{% url 'servicios:comentar' object.id %}" class="mt-2">
+      {% csrf_token %}
+      <div class="row g-2">
+        <div class="col-md-10">
+          <textarea name="texto" class="form-control" rows="2" placeholder="Escribe un comentario..."></textarea>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button class="btn btn-outline-primary">Publicar</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Mapas -->
+{% if object.lat_recogida and object.lon_recogida %}
+  <div class="card my-3">
+    <div class="card-header">Ubicación de recogida</div>
+    <div class="card-body">
+      <div class="ratio ratio-16x9">
+        <iframe src="https://www.google.com/maps?q={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}&hl=es&z=14&output=embed"
+          allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="mt-2">
+        <a class="btn btn-sm btn-outline-secondary" target="_blank"
+           href="https://www.google.com/maps/dir/?api=1&destination={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}">📍 Navegar</a>
+        <a class="btn btn-sm btn-outline-secondary" target="_blank"
+           href="https://www.google.com/maps/search/?api=1&query={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}">🔎 Ver</a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{% if object.lat_entrega and object.lon_entrega %}
+  <div class="card my-3">
+    <div class="card-header">Ubicación de entrega</div>
+    <div class="card-body">
+      <div class="ratio ratio-16x9">
+        <iframe src="https://www.google.com/maps?q={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}&hl=es&z=14&output=embed"
+          allowfullscreen loading="lazy"></iframe>
+      </div>
+      <div class="mt-2">
+        <a class="btn btn-sm btn-outline-secondary" target="_blank"
+           href="https://www.google.com/maps/dir/?api=1&destination={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}">📦 Navegar</a>
+        <a class="btn btn-sm btn-outline-secondary" target="_blank"
+           href="https://www.google.com/maps/search/?api=1&query={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}">🔎 Ver</a>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+<script>
+function enviarConUbicacion(formId, latId, lonId) {
+  const form = document.getElementById(formId);
+  if (!navigator.geolocation) { form.submit(); return; }
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      document.getElementById(latId).value = pos.coords.latitude;
+      document.getElementById(lonId).value = pos.coords.longitude;
+      form.submit();
+    },
+    function() { form.submit(); },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+  );
+}
+</script>
+{% endblock %}

@@ -1,0 +1,56 @@
+{# templates/rutas/crear_ruta.html #}
+{% extends "base.html" %}
+{% block title %}Crear ruta{% endblock %}
+
+{% block extra_css %}
+<style>
+  .form-card{ max-width: 720px; margin-inline:auto; }
+  .form-grid{ display:grid; gap:12px; }
+  .actions{ display:flex; gap:12px; flex-wrap:wrap; }
+  .actions .btn{ min-width: 140px; } /* mismo ancho para Guardar/Cancelar */
+</style>
+{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Crear ruta</h1>
+
+<form method="post" class="card card-body form-card">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div class="card" style="border-left:6px solid var(--st-error); margin-bottom:10px;">
+      <div class="card-body">{{ form.non_field_errors }}</div>
+    </div>
+  {% endif %}
+
+  <div class="form-grid">
+    {% for field in form %}
+      <div>
+        {{ field.label_tag }}
+        {{ field }}
+        {% if field.errors %}
+          <div class="text-danger small">{{ field.errors|join:", " }}</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="actions mt-3">
+    <button class="btn btn-primary" type="submit">Guardar</button>
+    <a href="{% url 'rutas:list' %}" class="btn btn-outline-secondary">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('input[type="date"]').forEach(el => {
+      if (el.showPicker) {
+        el.addEventListener('focus', () => el.showPicker());
+        el.addEventListener('click', () => el.showPicker());
+      }
+    });
+  });
+</script>
+{% endblock %}
