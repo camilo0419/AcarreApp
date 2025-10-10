@@ -43,12 +43,30 @@
                 {% endif %}
               </td>
               <td class="text-center">
-                <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
-                <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja de ruta</a>
+                <!-- Botones básicos -->
+                <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">
+                  Ver
+                </a>
+                <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">
+                  Hoja de ruta
+                </a>
+
+                <!-- Botón visible solo si la ruta está cerrada -->
+                {% if r.estado == "CERRADA" %}
+                  <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-outline-success">
+                    📊 Ver cierre
+                  </a>
+                {% endif %}
+
+                <!-- Botón de borrar (solo para admins y rutas activas) -->
                 {% if user.is_superuser or user.is_staff %}
-                  
-                  <a href="{% url 'rutas:borrar' r.pk %}" class="btn btn-sm btn-outline-dark"
-                    onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">Borrar</a>
+                  {% if r.estado == "ACTIVA" %}
+                    <a href="{% url 'rutas:borrar' r.pk %}"
+                       class="btn btn-sm btn-outline-dark"
+                       onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">
+                      🗑️ Borrar
+                    </a>
+                  {% endif %}
                 {% endif %}
               </td>
             </tr>
