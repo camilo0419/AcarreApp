@@ -126,9 +126,10 @@ MEDIA_ROOT = BASE_DIR / "media"
 # =========================
 # Auth redirects (usar NOMBRES, no rutas)
 # =========================
-LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "post_login"
-LOGOUT_REDIRECT_URL = "login"
+LOGIN_REDIRECT_URL = "/post-login/"
+LOGIN_URL = "/accounts/login/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+
 
 # =========================
 # Misc

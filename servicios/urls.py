@@ -3,7 +3,7 @@ from . import views
 
 app_name = 'servicios'
 urlpatterns = [
-    path('mis/', views.MisServiciosView.as_view(), name='mis'),
+    path('mis/', views.MisServiciosListView.as_view(), name='mis'),
     path('crear/', views.crear_servicio, name='crear'),
     path('ruta/<int:ruta_id>/', views.ServiciosPorRutaView.as_view(), name='por_ruta'),  # ⬅️ nuevo
     path('<int:pk>/', views.ServicioDetailView.as_view(), name='detail'),

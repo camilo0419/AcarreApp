@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% load humanize formatting %}
+{% block title %}Cartera (CxC){% endblock %}
+
+{% block extra_css %}
+<style>
+  .shell{max-width:1200px;margin:0 auto}
+  .filters{
+    display:grid;gap:14px;
+    grid-template-columns:repeat(5,minmax(0,1fr)) auto;
+    align-items:end;
+  }
+  @media (max-width: 960px){ .filters{grid-template-columns:1fr 1fr;}}
+  .filters label{font-weight:700}
+  .filters .input,.filters select{width:100%}
+  .deck{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr));}
+  @media (max-width: 1100px){ .deck{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width: 600px){ .deck{grid-template-columns:1fr;}}
+  .kpi{
+    background:#fff;border:1px solid var(--line-200);border-radius:16px;
+    padding:16px;box-shadow:var(--shadow-1)
+  }
+  .kpi .label{color:var(--ink-700);font-weight:700}
+  .kpi .value{font-size:1.6rem;font-weight:900;margin-top:2px}
+  .section{margin-top:18px}
+  .cardx{
+    border:1px solid var(--line-200);border-radius:16px;background:#fff;
+    box-shadow:var(--shadow-1)
+  }
+  .cardx .cardx-h{padding:10px 14px;border-bottom:1px solid var(--line-200);font-weight:700}
+  .cardx .cardx-b{padding:12px 14px}
+  .pill{display:inline-block;padding:.2rem .6rem;border-radius:999px;border:1px solid var(--line-200);background:#fafbff}
+
+/* ← fuerza a que vuelva el date picker nativo */
+.input[type="date"],
+input[type="date"]{
+  -webkit-appearance: auto;
+  appearance: auto;
+  background-image: none !important;
+  padding-right: 36px; /* deja espacio al ícono del calendario */
+}
+
+/* Asegura que el ícono sea clickeable y visible (WebKit/Blink) */
+.input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="date"]::-webkit-calendar-picker-indicator{
+  opacity: 1 !important;
+  display: block !important;
+  cursor: pointer;
+}
+
+/* Si algún reset oculta los controles internos */
+.input[type="date"]::-webkit-inner-spin-button,
+.input[type="date"]::-webkit-clear-button{
+  display: block;
+}
+
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="shell">
+
+  <h1 class="m-0">Cartera (CxC)</h1>
+
+  <!-- FILTROS -->
+  <form class="filters mt-3" method="get">
+    <div>
+      <label for="cliente">Cliente</label>
+      <select id="cliente" name="cliente">
+        <option value="">Todos</option>
+        {% if filtros_clientes %}
+          {% for c in filtros_clientes %}
+            <option value="{{ c.id }}" {% if request.GET.cliente == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <div>
+      <label for="vendedor">Conductor</label>
+      <select id="vendedor" name="vendedor">
+        <option value="">Todos</option>
+        {% if filtros_vendedores %}
+          {% for v in filtros_vendedores %}
+            <option value="{{ v.id }}" {% if request.GET.vendedor == v.id|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+
+    <div>
+      <label for="rango">Rango</label>
+      <select id="rango" name="rango">
+        <option value="mes" {% if request.GET.rango == "mes" or not request.GET.rango %}selected{% endif %}>Mes actual</option>
+        <option value="30d" {% if request.GET.rango == "30d" %}selected{% endif %}>Últimos 30 días</option>
+        <option value="90d" {% if request.GET.rango == "90d" %}selected{% endif %}>Últimos 90 días</option>
+        <option value="custom" {% if request.GET.rango == "custom" %}selected{% endif %}>Personalizado</option>
+      </select>
+    </div>
+
+    <div>
+      <label for="desde">Desde</label>
+      <input id="desde" class="input" type="date" name="desde" value="{{ request.GET.desde|default_if_none:'' }}">
+    </div>
+
+    <div>
+      <label for="hasta">Hasta</label>
+      <input id="hasta" class="input" type="date" name="hasta" value="{{ request.GET.hasta|default_if_none:'' }}">
+    </div>
+
+    <div>
+      <button class="btn btn-primary">Aplicar</button>
+    </div>
+  </form>
+
+  <!-- KPIs -->
+  <div class="deck section">
+    <div class="kpi">
+      <div class="label">Cartera total</div>
+      <div class="value">$ {{ cx_total|default:0|intcomma }}</div>
+      <div class="small text-muted">Clientes con saldo: {{ cx_clientes_con_saldo|default:0|intcomma }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Cobrado (mes)</div>
+      <div class="value">$ {{ cx_cobrado_mes|default:0|intcomma }}</div>
+      <div class="small text-muted">{{ cx_pct_mes|default:0|floatformat:1 }} % del facturado del mes</div>
+    </div>
+    <div class="kpi">
+      <div class="label">DSO</div>
+      <div class="value">{{ cx_dso|default:"—" }}</div>
+      <div class="small text-muted">Días de venta pendientes de cobro</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Top deudor</div>
+      <div class="value">$ {{ cx_top_deudor.saldo|default:0|intcomma }}</div>
+      <div class="small text-muted">{{ cx_top_deudor.nombre|default:"—" }}</div>
+    </div>
+  </div>
+
+  <!-- Aging -->
+  <div class="section cardx">
+    <div class="cardx-h">Aging de cartera</div>
+    <div class="cardx-b">
+      {% with arr=cx_aging|default:None pct=cx_aging_pct|default:None %}
+        {% if arr %}
+          <div style="display:grid;gap:10px;grid-template-columns:repeat(4,1fr);">
+            <div><div class="pill">0–30</div><div class="h5 m-1">$ {{ arr.0|default:0|intcomma }}</div><div class="text-muted">{{ pct.0|default:0 }}%</div></div>
+            <div><div class="pill">31–60</div><div class="h5 m-1">$ {{ arr.1|default:0|intcomma }}</div><div class="text-muted">{{ pct.1|default:0 }}%</div></div>
+            <div><div class="pill">61–90</div><div class="h5 m-1">$ {{ arr.2|default:0|intcomma }}</div><div class="text-muted">{{ pct.2|default:0 }}%</div></div>
+            <div><div class="pill">90+</div><div class="h5 m-1">$ {{ arr.3|default:0|intcomma }}</div><div class="text-muted">{{ pct.3|default:0 }}%</div></div>
+          </div>
+        {% else %}
+          <div class="text-muted">Sin datos de aging en el rango.</div>
+        {% endif %}
+      {% endwith %}
+    </div>
+  </div>
+
+  <!-- Top deudores -->
+  <div class="section cardx">
+    <div class="cardx-h">Top deudores</div>
+    <div class="cardx-b">
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0">
+          <thead>
+            <tr><th>Cliente</th><th class="text-end">Saldo</th></tr>
+          </thead>
+          <tbody>
+          {% if cx_top_deudores %}
+            {% for it in cx_top_deudores %}
+              <tr>
+                <td>{{ it.nombre|default:"—" }}</td>
+                <td class="text-end">$ {{ it.saldo|default:0|intcomma }}</td>
+              </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="2" class="text-center text-muted py-3">Sin deudores en este rango.</td></tr>
+          {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('input[type="date"]').forEach(el=>{
+  el.addEventListener('click', ()=> { if (el.showPicker) el.showPicker(); });
+});
+</script>
+{% endblock %}

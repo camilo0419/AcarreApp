@@ -17,7 +17,7 @@
           <nav class="nav main-nav" aria-label="Navegación principal">
             <a href="{% url 'servicios:mis' %}">Servicios</a>
             <a href="{% url 'rutas:list' %}">Rutas</a>
-            <a href="{% url 'dashboard:index' %}">Dashboard</a>
+            <a href="{% url 'dashboard:home' %}">Dashboard</a>
           </nav>
         {% else %}
           {# ---- Menú para CONDUCTOR ---- #}
@@ -42,7 +42,11 @@
               <a href="{% url 'servicios:mis' %}" role="menuitem">Mis servicios</a>
               <div class="divider"></div>
             {% endif %}
-            <a href="{% url 'logout' %}" class="dropdown-danger" role="menuitem">Salir</a>
+            <form method="post" action="{% url 'logout' %}" style="display:inline;">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-link p-0">Salir</button>
+            </form>
+
           </div>
         </div>
       {% endwith %}

@@ -38,94 +38,76 @@ def is_conductor(user):
 # ===== Listado =====
 @method_decorator(login_required, name='dispatch')
 class RutasListView(ListView):
-    model = Ruta
-    template_name = 'rutas/list.html'
-    context_object_name = 'rutas'
-    paginate_by = 25
+        model = Ruta
+        template_name = 'rutas/list.html'
+        context_object_name = 'rutas'
+        paginate_by = 25
 
-    def get_queryset(self):
-        emp = get_current_empresa()
-        qs = (Ruta.objects
-              .filter(empresa=emp)
-              .select_related('vehiculo', 'conductor'))
+        def get_queryset(self):
+            emp = get_current_empresa()
+            qs = (Ruta.objects
+                .filter(empresa=emp)
+                .select_related('vehiculo', 'conductor'))
 
-        # Conductor: solo sus rutas activas (como pediste)
-        if is_conductor(self.request.user):
-            qs = qs.filter(conductor=self.request.user, estado='ACTIVA')
+            # Conductor: solo sus rutas activas (como ya lo tienes)
+            if is_conductor(self.request.user):
+                qs = qs.filter(conductor=self.request.user, estado='ACTIVA')
 
-        GET = self.request.GET
+            GET = self.request.GET
 
-        # ---- Rango de fechas (YYYY-MM-DD) ----
-        desde = (GET.get('desde') or '').strip() or None
-        hasta = (GET.get('hasta') or '').strip() or None
-        if desde:
-            qs = qs.filter(fecha_salida__date__gte=desde)
-        if hasta:
-            qs = qs.filter(fecha_salida__date__lte=hasta)
+            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+            # Nuevo: para GERENTE/STAFF/SUPER, permitir ?activas=1 (solo activas)
+            # y opcionalmente ?cerradas=1 (solo cerradas). No afecta a conductores,
+            # porque arriba ya se forzó ACTIVA.
+            if not is_conductor(self.request.user):
+                if GET.get('activas') == '1':
+                    qs = qs.filter(estado='ACTIVA')
+                elif GET.get('cerradas') == '1':
+                    # si usas otro estado como 'CERRADA' o 'FINALIZADA', ajusta aquí
+                    qs = qs.filter(estado='CERRADA')
+            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
 
-        # ---- Multi-select de vehículos (ids) ----
-        vehiculos_ids = [v for v in GET.getlist('vehiculos') if v]
-        if vehiculos_ids:
-            qs = qs.filter(vehiculo_id__in=vehiculos_ids)
+            # ---- Rango de fechas (YYYY-MM-DD) ----
+            desde = (GET.get('desde') or '').strip() or None
+            hasta = (GET.get('hasta') or '').strip() or None
+            if desde:
+                qs = qs.filter(fecha_salida__date__gte=desde)
+            if hasta:
+                qs = qs.filter(fecha_salida__date__lte=hasta)
 
-        # ---- Multi-select de clientes (ids) a través de servicios ----
-        clientes_ids = [c for c in GET.getlist('clientes') if c]
-        if clientes_ids:
-            # related_name = 'servicios'
-            qs = qs.filter(servicios__cliente_id__in=clientes_ids)
+            # ---- Multi-select de vehículos (ids) ----
+            vehiculos_ids = [v for v in GET.getlist('vehiculos') if v]
+            if vehiculos_ids:
+                qs = qs.filter(vehiculo_id__in=vehiculos_ids)
 
-        # ---- Buscador global ----
-        # --- Buscador global ---
-        q = (GET.get('q') or '').strip()
-        if q:
-            # Campos existentes
-            base = (
-                Q(nombre__icontains=q) |
-                Q(vehiculo__placa__icontains=q) |          # ← dejamos solo placa
-                Q(conductor__username__icontains=q) |
-                Q(conductor__first_name__icontains=q) |
-                Q(conductor__last_name__icontains=q) |
-                Q(estado__icontains=q)
-            )
-            if q.isdigit():
-                base |= Q(id=int(q))
+            # ---- Multi-select de clientes (ids) a través de servicios ----
+            clientes_ids = [c for c in GET.getlist('clientes') if c]
+            if clientes_ids:
+                qs = qs.filter(servicios__cliente_id__in=clientes_ids)
 
-            # A través de servicios
-            qs = qs.filter(
-                base |
-                Q(servicios__cliente__nombre__icontains=q) |
-                Q(servicios__origen__icontains=q) |
-                Q(servicios__destino__icontains=q)
-            )
+            # ---- Buscador global ----
+            q = (GET.get('q') or '').strip()
+            if q:
+                base = (
+                    Q(nombre__icontains=q) |
+                    Q(vehiculo__placa__icontains=q) |
+                    Q(conductor__username__icontains=q) |
+                    Q(conductor__first_name__icontains=q) |
+                    Q(conductor__last_name__icontains=q) |
+                    Q(estado__icontains=q)
+                )
+                if q.isdigit():
+                    base |= Q(id=int(q))
 
-        # Evita duplicados por joins con servicios
-        return qs.distinct().order_by('-created_at')
+                qs = qs.filter(
+                    base |
+                    Q(servicios__cliente__nombre__icontains=q) |
+                    Q(servicios__origen__icontains=q) |
+                    Q(servicios__destino__icontains=q)
+                )
 
-    def get_context_data(self, **kwargs):
-        ctx = super().get_context_data(**kwargs)
-        emp = get_current_empresa()
+            return qs.distinct().order_by('-created_at')
 
-        # Para poblar selects
-        ctx['vehiculos'] = Vehiculo.objects.filter(empresa=emp).order_by('placa')
-        ctx['clientes']  = Cliente.objects.filter(empresa=emp).order_by('nombre')
-
-        # ❗ Lo que antes intentabas en el template:
-        ctx['selected_vehiculos'] = self.request.GET.getlist('vehiculos')
-        ctx['selected_clientes']  = self.request.GET.getlist('clientes')
-
-        # Para paginación conservando filtros (q, fechas, vehiculos, clientes)
-        params = self.request.GET.copy()
-        if 'page' in params:
-            try:
-                del params['page']
-            except KeyError:
-                pass
-        ctx['qs_no_page'] = ('&' + params.urlencode()) if params else ''
-
-        # Flags de rol (si quieres condicionar UI)
-        ctx['es_gerente'] = is_gerente(self.request.user)
-        ctx['es_conductor'] = is_conductor(self.request.user)
-        return ctx
 
 
 # ===== Hoja de ruta (detalle) =====
@@ -600,7 +582,7 @@ def exportar_cierre_xlsx(request, ruta_id: int):
     _auto_fit(ws3)
 
     # respuesta
-    filename = f"cierre_ruta_{ruta.id}.xlsx"
+    filename = f"Cierre_ruta_{ruta.id}_{ruta.nombre}_{ruta.fecha_salida}.xlsx"
     resp = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     wb.save(resp)

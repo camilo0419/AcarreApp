@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Recorrido - {{ ruta_nombre }}{% endblock %}
+
+{% block content %}
+<h2 class="mb-2">Recorrido de {{ ruta_nombre }}</h2>
+<div class="text-muted" style="margin-bottom:10px;">
+  Vehículo: <strong>{{ placa }}</strong> · Conductor: <strong>{{ conductor|default:"—" }}</strong>
+</div>
+
+<div id="big-map" style="height:520px;border:1px solid var(--line-200);border-radius:12px;overflow:hidden;"></div>
+
+<div class="mt-3">
+  <a class="btn btn-outline" href="{% url 'dashboard:home' %}">Volver al dashboard</a>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  const id = {{ ruta_id }};
+  const map = L.map('big-map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  map.setView([4.710989, -74.07209], 5);
+
+  fetch(`{% url 'dashboard:api_ruta_points' 0 %}`.replace('/0/','/'+id+'/'), { credentials:'same-origin' })
+    .then(r => r.json())
+    .then(({points}) => {
+      if (!points || !points.length) return;
+      const latlngs = points.map(p => L.latLng(p[0], p[1]));
+      const line = L.polyline(latlngs).addTo(map);
+      L.circleMarker(latlngs[0], { radius:6 }).addTo(map);
+      L.circleMarker(latlngs[latlngs.length-1], { radius:6 }).addTo(map);
+      map.fitBounds(line.getBounds(), { padding:[20,20] });
+    })
+    .catch(()=>{});
+})();
+</script>
+{% endblock %}

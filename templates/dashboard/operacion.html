@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% load humanize formatting %}
+{% block title %}Ingresos operativos{% endblock %}
+
+{% block extra_css %}
+<style>
+  .shell{max-width:1200px;margin:0 auto}
+  .filters{
+    display:grid;gap:14px;
+    grid-template-columns:repeat(5,minmax(0,1fr)) auto;
+    align-items:end;
+  }
+  @media (max-width: 960px){ .filters{grid-template-columns:1fr 1fr;}}
+  .filters label{font-weight:700}
+  .filters .input,.filters select{width:100%}
+  .deck{display:grid;gap:12px;grid-template-columns:repeat(4,minmax(0,1fr));}
+  @media (max-width: 1100px){ .deck{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width: 600px){ .deck{grid-template-columns:1fr;}}
+  .kpi{
+    background:#fff;border:1px solid var(--line-200);border-radius:16px;
+    padding:16px;box-shadow:var(--shadow-1)
+  }
+  .kpi .label{color:var(--ink-700);font-weight:700}
+  .kpi .value{font-size:1.6rem;font-weight:900;margin-top:2px}
+  .section{margin-top:18px}
+  .cardx{
+    border:1px solid var(--line-200);border-radius:16px;background:#fff;
+    box-shadow:var(--shadow-1)
+  }
+  .cardx .cardx-h{padding:10px 14px;border-bottom:1px solid var(--line-200);font-weight:700}
+  .cardx .cardx-b{padding:12px 14px}
+  .actions-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="shell">
+
+  <h1 class="m-0">Ingresos operativos</h1>
+
+  <!-- FILTROS -->
+  <form class="filters mt-3" method="get">
+    <div>
+      <label for="punto">Punto de venta</label>
+      <select id="punto" name="punto">
+        <option value="">Todos</option>
+        {% if filtros_puntos %}
+          {% for p in filtros_puntos %}
+            <option value="{{ p.id }}" {% if request.GET.punto == p.id|stringformat:"s" %}selected{% endif %}>{{ p.nombre }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+    <div>
+      <label for="vendedor">Conductor</label>
+      <select id="vendedor" name="vendedor">
+        <option value="">Todos</option>
+        {% if filtros_vendedores %}
+          {% for v in filtros_vendedores %}
+            <option value="{{ v.id }}" {% if request.GET.vendedor == v.id|stringformat:"s" %}selected{% endif %}>{{ v.username }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+    </div>
+    <div>
+      <label for="rango">Rango</label>
+      <select id="rango" name="rango">
+        <option value="mes" {% if request.GET.rango == "mes" or not request.GET.rango %}selected{% endif %}>Mes actual</option>
+        <option value="7d" {% if request.GET.rango == "7d" %}selected{% endif %}>Últimos 7 días</option>
+        <option value="30d" {% if request.GET.rango == "30d" %}selected{% endif %}>Últimos 30 días</option>
+        <option value="custom" {% if request.GET.rango == "custom" %}selected{% endif %}>Personalizado</option>
+      </select>
+    </div>
+    <div>
+      <label for="desde">Desde</label>
+      <input id="desde" class="input" type="date" name="desde" value="{{ request.GET.desde|default_if_none:'' }}">
+    </div>
+    <div>
+      <label for="hasta">Hasta</label>
+      <input id="hasta" class="input" type="date" name="hasta" value="{{ request.GET.hasta|default_if_none:'' }}">
+    </div>
+    <div>
+      <button class="btn btn-primary">Aplicar</button>
+    </div>
+  </form>
+
+  <!-- KPIs -->
+  <div class="deck section">
+    <div class="kpi">
+      <div class="label">Facturado (rango)</div>
+      <div class="value">$ {{ op_facturado|default:0|intcomma }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Cobrado (rango)</div>
+      <div class="value">$ {{ op_cobrado|default:0|intcomma }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Órdenes / día</div>
+      <div class="value">{{ op_ordenes_dia|default:"—" }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Lead-time prom.</div>
+      <div class="value">{{ lead_time_horas|default:"—" }}</div>
+    </div>
+  </div>
+
+  <!-- Gráficos -->
+  <div class="section cardx">
+    <div class="cardx-h">Tendencia diaria</div>
+    <div class="cardx-b">
+      <div id="chart_linea_fact" style="height:260px;border:1px dashed var(--line-200);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink-500);">
+        (gráfico línea: facturado por día)
+      </div>
+    </div>
+  </div>
+
+  <div class="section" style="display:grid;gap:12px;grid-template-columns:2fr 1fr;">
+    <div class="cardx">
+      <div class="cardx-h">Ingresos por cliente</div>
+      <div class="cardx-b">
+        <div id="chart_barras_clientes" style="height:280px;border:1px dashed var(--line-200);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink-500);">
+          (gráfico barras: top 10 clientes)
+        </div>
+      </div>
+    </div>
+    <div class="cardx">
+      <div class="cardx-h">Distribución de pago</div>
+      <div class="cardx-b">
+        <div id="chart_pie_pago" style="height:280px;border:1px dashed var(--line-200);border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--ink-500);">
+          (gráfico pie: ANT vs PAG vs PEND)
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+document.querySelectorAll('input[type="date"]').forEach(el=>{
+  el.addEventListener('click', ()=> { if (el.showPicker) el.showPicker(); });
+});
+</script>
+{% endblock %}

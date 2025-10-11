@@ -2,89 +2,114 @@
 {% load formatting %}
 {% block title %}Rutas{% endblock %}
 
+{% block extra_css %}
+<style>
+  /* Título y acciones con aire inferior */
+  .page-header{display:flex;align-items:center;gap:12px}
+  .page-actions{margin:6px 0 14px}
+
+  /* Estilo local para “Ver cierre” (naranja) */
+  #rutas-page .btn-cierre{
+    background:#f59e0b;       /* amber 500 */
+    border-color:#f59e0b;
+    color:#111827;            /* slate-900, buen contraste */
+  }
+  #rutas-page .btn-cierre:hover{
+    background:#d97706;       /* amber 600 */
+    border-color:#d97706;
+    color:#ffffff;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h1 class="m-0">Rutas</h1>
-  {% if user.is_superuser or user.is_staff %}
-    <a class="btn btn-primary" href="{% url 'rutas:crear' %}">➕ Crear ruta</a>
-  {% endif %}
-</div>
+<div id="rutas-page">
+  <header class="page-header">
+    <h1 class="m-0">Rutas</h1>
+  </header>
 
-<div class="card shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-striped table-hover align-middle mb-0">
-        <thead class="table-dark">
-          <tr>
-            <th class="text-center">ID</th>
-            <th>Nombre</th>
-            <th>Fecha salida</th>
-            <th>Vehículo</th>
-            <th>Conductor</th>
-            <th>Estado</th>
-            <th class="text-center">Acciones</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in rutas %}
+  <div class="page-actions">
+    {% if user.is_superuser or user.is_staff %}
+      <a class="btn btn-primary" href="{% url 'rutas:crear' %}">➕ Crear ruta</a>
+    {% endif %}
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped table-hover align-middle mb-0">
+          <thead class="table-dark">
             <tr>
-              <td class="text-center">
-                <a href="{% url 'servicios:por_ruta' r.pk %}">#{{ r.id }}</a>
-              </td>
-              <td>{{ r.nombre|default:"(sin nombre)" }}</td>
-              <td>{{ r.fecha_salida|date:"Y-m-d" }}</td>
-              <td>{{ r.vehiculo|default:"—" }}</td>
-              <td>{{ r.conductor.username|default:"—" }}</td>
-              <td>
-                {% if r.estado == "ACTIVA" %}
-                  <span class="badge text-bg-success">Activa</span>
-                {% else %}
-                  <span class="badge text-bg-secondary">Cerrada</span>
-                {% endif %}
-              </td>
-              <td class="text-center">
-                <!-- Botones básicos -->
-                <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">
-                  Ver
-                </a>
-                <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">
-                  Hoja de ruta
-                </a>
-
-                <!-- Botón visible solo si la ruta está cerrada -->
-                {% if r.estado == "CERRADA" %}
-                  <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-outline-success">
-                    📊 Ver cierre
-                  </a>
-                {% endif %}
-
-                <!-- Botón de borrar (solo para admins y rutas activas) -->
-                {% if user.is_superuser or user.is_staff %}
+              <th class="text-center">ID</th>
+              <th>Nombre</th>
+              <th>Fecha salida</th>
+              <th>Vehículo</th>
+              <th>Conductor</th>
+              <th>Estado</th>
+              <th class="text-center">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rutas %}
+              <tr>
+                <td class="text-center">
+                  <a href="{% url 'servicios:por_ruta' r.pk %}">#{{ r.id }}</a>
+                </td>
+                <td>{{ r.nombre|default:"(sin nombre)" }}</td>
+                <td>{{ r.fecha_salida|date:"Y-m-d" }}</td>
+                <td>{{ r.vehiculo|default:"—" }}</td>
+                <td>{{ r.conductor.username|default:"—" }}</td>
+                <td>
                   {% if r.estado == "ACTIVA" %}
-                    <a href="{% url 'rutas:borrar' r.pk %}"
-                       class="btn btn-sm btn-outline-dark"
-                       onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">
-                      🗑️ Borrar
+                    <span class="badge text-bg-success">Activa</span>
+                  {% else %}
+                    <span class="badge text-bg-secondary">Cerrada</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  <!-- Botones básicos -->
+                  <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">
+                    Ver
+                  </a>
+                  <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">
+                    Hoja de ruta
+                  </a>
+
+                  <!-- Botón visible solo si la ruta está cerrada -->
+                  {% if r.estado == "CERRADA" %}
+                    <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">
+                      📊 Ver cierre
                     </a>
                   {% endif %}
-                {% endif %}
-              </td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="7" class="text-center text-muted py-4">
-                {% with rol=user.userprofile.rol|default_if_none:'' %}
-                  {% if rol == 'CONDUCTOR' %}
-                    No tienes rutas asignadas actualmente.
-                  {% else %}
-                    No hay rutas registradas.
+
+                  <!-- Botón de borrar (solo para admins y rutas activas) -->
+                  {% if user.is_superuser or user.is_staff %}
+                    {% if r.estado == "ACTIVA" %}
+                      <a href="{% url 'rutas:borrar' r.pk %}"
+                         class="btn btn-sm btn-outline-dark"
+                         onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">
+                        🗑️ Borrar
+                      </a>
+                    {% endif %}
                   {% endif %}
-                {% endwith %}
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="7" class="text-center text-muted py-4">
+                  {% with rol=user.userprofile.rol|default_if_none:'' %}
+                    {% if rol == 'CONDUCTOR' %}
+                      No tienes rutas asignadas actualmente.
+                    {% else %}
+                      No hay rutas registradas.
+                    {% endif %}
+                  {% endwith %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 </div>

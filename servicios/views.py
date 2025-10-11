@@ -296,7 +296,7 @@ class ServiciosPorRutaView(ListView):
         qs = Servicio.objects.filter(ruta=self.ruta).select_related('cliente','ruta')
         # Orden que tenías “antes”: primero los no entregados, luego por id asc (o fecha), ajusta si quieres:
         return qs.order_by('entregado', 'id')
-    
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         user = self.request.user
@@ -307,3 +307,41 @@ class ServiciosPorRutaView(ListView):
             'es_gerente': user.is_superuser or user.is_staff or role == 'GERENTE',
         })
         return ctx
+
+
+class MisServiciosListView(LoginRequiredMixin, ListView):
+    model = Servicio
+    template_name = "servicios/mis_servicios.html"  # o "servicios/mis.html" si prefieres
+    context_object_name = "object_list"
+    paginate_by = 20
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('ruta','cliente','ruta__conductor')
+        emp = get_current_empresa()
+        qs = qs.filter(ruta__empresa=emp)
+
+        user = self.request.user
+        role = getattr(getattr(user, 'userprofile', None), 'rol', '')
+        if role == 'CONDUCTOR' and not user.is_staff and not user.is_superuser:
+            qs = qs.filter(ruta__conductor=user)
+
+        GET = self.request.GET
+        if GET.get("solo_no_entregados") == "1":
+            if hasattr(Servicio, "entregado"):
+                qs = qs.filter(entregado=False)
+            else:
+                qs = qs.filter(entregado_en__isnull=True)
+
+        if GET.get("solo_rutas_activas") == "1":
+            if hasattr(Ruta, "estado"):
+                qs = qs.filter(ruta__estado="ACTIVA")
+            elif hasattr(Ruta, "cerrada"):
+                qs = qs.filter(ruta__cerrada=False)
+
+        if GET.get("activos") == "1":
+            if hasattr(Servicio, "entregado"):
+                qs = qs.filter(entregado=False)
+            else:
+                qs = qs.filter(entregado_en__isnull=True)
+
+        return qs.order_by('-id')

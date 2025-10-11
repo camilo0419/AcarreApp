@@ -1,16 +1,207 @@
 {% extends "base.html" %}
+{% load humanize l10n %}
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-  <section class="section-hero round-lg shadow-2 max-w-md">
-    <h1 class="h1">Dashboard</h1>
-    <p class="text-muted">Pronto pondremos KPIs y atajos rápidos.</p>
-  </section>
+<header class="mb-2">
+  <h1 class="m-0">Dashboard</h1>
+  <div class="text-muted" style="margin-top:2px;">
+    <strong>Bienvenido, {{ nombre_usuario }}</strong> · Actualizado: {{ hoy|date:"Y-m-d" }}
+  </div>
+</header>
 
-  <div class="card" style="margin-top:16px;">
-    <div class="card-header">Resumen</div>
-    <div class="card-body">
-      <p class="text-muted">Sin datos por ahora. Vamos a conectar las vistas de rutas/servicios.</p>
+<!-- KPI resumen -->
+<div class="kpi-deck">
+  <div class="kpi-card">
+    <div class="kpi-label">Facturado (mes en curso)</div>
+    <div class="kpi-value">$ {{ kpi_facturado|intcomma }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Cobrado (mes en curso)</div>
+    <div class="kpi-value">$ {{ kpi_cobrado|intcomma }}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Cartera</div>
+    <div class="kpi-value">$ {{ kpi_cartera|intcomma }}</div>
+  </div>
+</div>
+
+<!-- aire -->
+<div style="height:12px;"></div>
+
+<!-- Resumen operativo -->
+<section class="card">
+  <div class="card-header">Resumen operativo</div>
+  <div class="card-body">
+    <div class="ops-grid">
+      <!-- Servicios activos -->
+      <a class="stat" href="{% url 'servicios:mis' %}?solo_no_entregados=1&solo_rutas_activas=1" aria-label="Servicios activos">
+        <div class="stat-head">
+          <span class="stat-icon bg-amber">📦</span>
+          <span class="stat-title">Servicios activos</span>
+        </div>
+        <div class="stat-number">{{ servicios_activos }}</div>
+      </a>
+
+      <!-- Rutas activas -->
+      <a class="stat" href="{% url 'rutas:list' %}?activas=1" aria-label="Rutas activas">
+        <div class="stat-head">
+          <span class="stat-icon bg-indigo">🧭</span>
+          <span class="stat-title">Rutas activas</span>
+        </div>
+        <div class="stat-number">{{ rutas_activas }}</div>
+      </a>
+
+      <!-- Entregadas hoy -->
+      <div class="stat" aria-label="Entregadas hoy">
+        <div class="stat-head">
+          <span class="stat-icon bg-green">✅</span>
+          <span class="stat-title">Entregadas hoy</span>
+        </div>
+        <div class="stat-number">{{ entregadas_hoy }}</div>
+      </div>
+
+
+      <!-- Acciones -->
+      <div class="stat-actions">
+        <a class="btn btn-accent btn-block"  href="{% url 'servicios:mis' %}?solo_no_entregados=1&solo_rutas_activas=1">Servicios activos</a>
+        <a class="btn btn-primary btn-block" href="{% url 'rutas:list' %}?activas=1">Rutas activas</a>
+        <a class="btn btn-outline btn-block" href="{% url 'dashboard:operacion' %}">Ingresos operativos</a>
+        <a class="btn btn-outline btn-block" href="{% url 'dashboard:cartera' %}">Cartera (CxC)</a>
+      </div>
     </div>
   </div>
+</section>
+
+<!-- aire extra -->
+<div style="height:24px;"></div>
+
+<!-- Rutas activas por vehículo -->
+{% if rutas_cards %}
+<section class="card">
+  <div class="card-header">Rutas activas por vehículo</div>
+  <div class="card-body">
+    <div class="routes-grid">
+      {% for r in rutas_cards %}
+      <div class="route-mini">
+        <div class="route-top">
+          <div class="route-title">{{ r.nombre }}</div>
+          <div class="route-chip">{{ r.placa }}</div>
+        </div>
+        <div class="route-meta">
+          <span>Conductor: {{ r.conductor|default:"—" }}</span>
+          <span>Servicios: <strong>{{ r.servicios_total }}</strong></span>
+        </div>
+        <div id="map-route-{{ r.id }}" class="mini-map" aria-label="Mapa de {{ r.nombre }}"></div>
+        <div class="route-actions">
+          <a class="btn btn-sm btn-outline" href="{% url 'dashboard:ruta_recorrido' r.id %}">Ver ruta</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <small class="text-muted">Se dibujan marcaciones de <em>recogido</em> y <em>entregado.</small>
+  </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+/* ==== KPIs ==== */
+.kpi-deck{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.kpi-deck{grid-template-columns:1fr}}
+.kpi-card{background:#fff;border:1px solid var(--line-200);border-radius:12px;padding:12px;box-shadow:var(--shadow-1)}
+.kpi-label{font-size:.9rem;color:var(--ink-700)}
+.kpi-value{font-size:1.6rem;font-weight:800;letter-spacing:.01em}
+
+/* ==== Resumen operativo ==== */
+.ops-grid{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px
+}
+@media (max-width:1200px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.ops-grid{grid-template-columns:1fr}}
+
+.stat{
+  display:flex;flex-direction:column;justify-content:space-between;
+  min-height:150px;padding:16px 18px;background:#fff;color:inherit;
+  border:1px solid var(--line-200);border-radius:16px;box-shadow:var(--shadow-1);
+  text-decoration:none;transition:box-shadow .18s ease,transform .18s ease,border-color .18s ease;
+}
+.stat:hover{box-shadow:var(--shadow-2);transform:translateY(-1px);border-color:var(--line-300)}
+.stat-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.stat-title{font-weight:700;color:var(--ink-800)}
+.stat-number{font-weight:900;font-size:2.1rem;line-height:1;margin-top:8px}
+
+/* iconitos */
+.stat-icon{
+  width:36px;height:36px;border-radius:999px;display:grid;place-items:center;
+  font-size:18px;border:1px solid rgba(0,0,0,.08);
+}
+.bg-amber{background:#FFF3D6;border-color:#F2D39B}
+.bg-indigo{background:#EAEAFF;border-color:#C8C8FF}
+.bg-green{background:#E8F8EE;border-color:#B9E6C5}
+
+/* card acciones */
+.stat-actions{
+  min-height:150px;padding:14px;background:#fff;border:1px dashed var(--line-300);
+  border-radius:16px;box-shadow:var(--shadow-1);display:flex;flex-direction:column;gap:10px
+}
+.btn-block{width:100%}
+
+/* ==== Mini-mapas ==== */
+.routes-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+@media (max-width:1200px){.routes-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:700px){.routes-grid{grid-template-columns:1fr}}
+.route-mini{background:#fff;border:1px solid var(--line-200);border-radius:14px;padding:12px;box-shadow:var(--shadow-1)}
+.route-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.route-title{font-weight:700}
+.route-chip{background:#eef3ff;border:1px solid #d3e0ff;padding:2px 8px;border-radius:999px;font-size:.85rem}
+.route-meta{display:flex;gap:16px;color:var(--ink-700);font-size:.92rem;margin:6px 0 8px}
+.mini-map{width:100%;height:180px;border-radius:12px;border:1px solid var(--line-200);overflow:hidden}
+.route-actions .btn-sm{font-size:.85rem;padding:6px 10px;border-radius:10px}
+
+/* Centrar los números de las stats */
+.stat-number{
+  text-align: center;
+  align-self: center;   /* por si el contenedor usa flex */
+  width: 100%;
+}
+* Centrar número en ambas direcciones sin afectar el header */
+.stat{ display:flex; flex-direction:column; }             /* asegura flex */
+.stat-number{
+  text-align:center;      /* centro horizontal */
+  align-self:center;      /* evita que herede alineaciones raras */
+  margin-top:auto;        /* empuja desde arriba */
+  margin-bottom:auto;     /* empuja desde abajo -> queda centrado */
+  width:100%;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  // Mini-mapas: carga puntos por ruta y dibuja polyline + extremos
+  document.querySelectorAll('.mini-map').forEach(el => {
+    const id = el.id.replace('map-route-','');
+    const map = L.map(el.id, { zoomControl:false, attributionControl:false });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom:19 }).addTo(map);
+    map.setView([4.710989,-74.07209], 5); // fallback
+
+    fetch(`{% url 'dashboard:api_ruta_points' 0 %}`.replace('/0/','/'+id+'/'), { credentials:'same-origin' })
+      .then(r => r.json())
+      .then(({points}) => {
+        if (!points || !points.length) return;
+        const latlngs = points.map(p => L.latLng(p[0], p[1]));
+        const line = L.polyline(latlngs).addTo(map);
+        L.circleMarker(latlngs[0], { radius:5 }).addTo(map);
+        L.circleMarker(latlngs[latlngs.length-1], { radius:5 }).addTo(map);
+        map.fitBounds(line.getBounds(), { padding:[10,10] });
+      })
+      .catch(()=>{});
+  });
+})();
+</script>
 {% endblock %}
