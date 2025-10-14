@@ -21,8 +21,23 @@
   .map-iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:12px;box-shadow:var(--shadow-1);}
   .btns-mini{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 
-  /* Pago: separar botón del input */
-  .btn-register{margin-top:8px;}
+  /* Pago: botones */
+  .btn-register{margin-top:0 !important;}  /* ← evita que “Registrar” quede más abajo */
+  .btn-row{
+    display:flex;
+    gap:10px;
+    justify-content:center;
+    align-items:center;
+    flex-wrap:wrap;
+    margin-top:10px;
+  }
+  .btn-row .btn{
+    min-width:120px;
+    height:44px;                 /* misma altura */
+    display:flex;align-items:center;justify-content:center; /* centrado interno */
+  }
+  .mt-input-btns{margin-top:10px;}        /* aire entre input y botones en móvil */
+  @media (min-width: 768px){ .mt-input-btns{margin-top:0;} }
 
   /* Estado operativo “pro” */
   .op-wrap{
@@ -44,6 +59,10 @@
   }
   .pill.ok{background:#eaf7ef;color:#236a3b;}
   .pill.wait{background:#fff6e6;color:#7a4d00;}
+
+  /* Aire extra entre cards que se juntaban */
+  .card + .op-wrap{margin-top:18px;}
+  .metrics-card .map-iframe{margin-top:8px;}
 </style>
 {% endblock %}
 
@@ -177,7 +196,7 @@
               </div>
 
               {% if not object.entregado or object.estado_pago != "PAG" %}
-                <div class="card border-0">
+                <div class="card border-0" style="margin-top:16px">
                   <div class="card-header px-0">Registrar pago en efectivo</div>
                   <div class="card-body px-0">
                     <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo_conductor' object.id %}">
@@ -187,8 +206,11 @@
                                name="monto" placeholder="Valor recibido"
                                {% if object.saldo_cartera > 0 %}max="{{ object.saldo_cartera }}"{% endif %}>
                       </div>
-                      <div class="col-md-4 d-grid">
-                        <button class="btn btn-outline-success btn-register">Registrar</button>
+                      <div class="col-md-4 mt-input-btns">
+                        <div class="btn-row">
+                          <button id="btn-registrar" class="btn btn-outline-success btn-register" hidden>Registrar</button>
+                          <button type="button" id="btn-fill-total" class="btn btn-outline-secondary">Pago total</button>
+                        </div>
                       </div>
                     </form>
                     <small class="text-muted">Tope: {{ object.saldo_cartera|money }}. Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
@@ -219,7 +241,7 @@
               </div>
 
               {% if not object.entregado or object.estado_pago != "PAG" %}
-                <div class="card border-0">
+                <div class="card border-0" style="margin-top:16px">
                   <div class="card-header px-0">Registrar pago en efectivo</div>
                   <div class="card-body px-0">
                     <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo_conductor' object.id %}">
@@ -229,8 +251,11 @@
                                name="monto" placeholder="Valor recibido"
                                {% if object.saldo_cartera > 0 %}max="{{ object.saldo_cartera }}"{% endif %}>
                       </div>
-                      <div class="col-md-4 d-grid">
-                        <button class="btn btn-outline-success btn-register">Registrar</button>
+                      <div class="col-md-4 mt-input-btns">
+                        <div class="btn-row">
+                          <button id="btn-registrar" class="btn btn-outline-success btn-register" hidden>Registrar</button>
+                          <button type="button" id="btn-fill-total" class="btn btn-outline-secondary">Pago total</button>
+                        </div>
                       </div>
                     </form>
                     <small class="text-muted">Tope: {{ object.saldo_cartera|money }}. Este pago entra como <em>INGRESO</em> en la caja de la ruta.</small>
@@ -247,7 +272,7 @@
         {% endwith %}
 
         <!-- Estado operativo “pro” -->
-        <div class="op-wrap mt-3">
+        <div class="op-wrap mt-4">
           <div class="op-item">
             <div class="op-icon">📦</div>
             <div class="op-body">
@@ -269,18 +294,18 @@
         </div>
 
         {% if object.recogido_en and object.entregado_en %}
-        <div class="border-top pt-3 mt-3">
-          <h6 class="text-muted">Métricas del recorrido</h6>
-          <div class="small">
-            ⏱️ Duración: <strong id="met-duracion">—</strong><br>
-            🚗 Distancia aprox.: <strong id="met-dist">—</strong>
+        <!-- Métricas en CARD (con mapa de ruta embebido) -->
+        <div class="card my-3 metrics-card">
+          <div class="card-header">Métricas del recorrido</div>
+          <div class="card-body">
+            <div class="small mb-2">
+              ⏱️ Duración: <strong id="met-duracion">—</strong><br>
+              🚗 Distancia aprox.: <strong id="met-dist">—</strong>
+            </div>
             {% if object.lat_recogida and object.lon_recogida and object.lat_entrega and object.lon_entrega %}
-              <div class="mt-2">
-                <a class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener"
-                   href="https://www.google.com/maps/dir/?api=1&origin={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}&destination={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}&travelmode=driving">
-                  Ver ruta en Google Maps
-                </a>
-              </div>
+              <iframe class="map-iframe"
+                src="https://www.google.com/maps?output=embed&saddr={{ object.lat_recogida|unlocalize }},{{ object.lon_recogida|unlocalize }}&daddr={{ object.lat_entrega|unlocalize }},{{ object.lon_entrega|unlocalize }}&dirflg=d"
+                loading="lazy" allowfullscreen></iframe>
             {% endif %}
           </div>
         </div>
@@ -379,20 +404,41 @@ function enviarConUbicacion(formId, latId, lonId) {
   );
 }
 
-/* Tope visual del pago */
+/* Pago: botón "Pago total" y mostrar/ocultar Registrar (sin depender de utilidades CSS) */
 (function(){
-  const inp = document.getElementById('inp-monto');
-  if(!inp) return;
+  const inp  = document.getElementById('inp-monto');
+  const btnR = document.getElementById('btn-registrar');
+  const btnT = document.getElementById('btn-fill-total');
+  if(!inp || !btnR || !btnT) return;
+
   const maxAttr = inp.getAttribute('max');
-  if (maxAttr) {
-    const maxVal = parseInt(maxAttr, 10) || 0;
+  const maxVal  = (maxAttr ? parseInt(maxAttr, 10) : 0) || 0;
+
+  if (maxVal > 0) {
     inp.placeholder = "Hasta " + new Intl.NumberFormat('es-CO').format(maxVal);
-    inp.addEventListener('input', function(){
-      let v = parseInt(this.value || '0', 10);
-      if (v > maxVal) this.value = maxVal;
-      if (v < 0) this.value = 0;
-    });
   }
+
+  const showBtn = (state) => { btnR.hidden = !state; };
+
+  const sanitizeAndToggle = () => {
+    let v = parseInt(inp.value || '0', 10);
+    if (maxVal && v > maxVal) { v = maxVal; inp.value = String(maxVal); }
+    showBtn(v > 0);
+  };
+
+  inp.addEventListener('input', sanitizeAndToggle);
+  inp.addEventListener('change', sanitizeAndToggle);
+
+  btnT.addEventListener('click', () => {
+    if (maxVal > 0) {
+      inp.value = String(maxVal);
+      showBtn(true);
+      try { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); } catch(e){}
+    }
+  });
+
+  // inicia oculto
+  showBtn(false);
 })();
 
 /* Métricas (duración + distancia por Haversine) */
