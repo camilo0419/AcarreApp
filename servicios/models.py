@@ -33,8 +33,12 @@ class Servicio(models.Model):
     lat_entrega = models.FloatField(null=True, blank=True)
     lon_entrega = models.FloatField(null=True, blank=True)
 
+    # ➕ Orden dentro de la ruta (para drag & drop del gerente)
+    orden = models.PositiveIntegerField(default=0, db_index=True)
+
     class Meta:
-        ordering = ['id']
+        # Mantenemos determinismo por orden dentro de la ruta y, como fallback, por id
+        ordering = ['ruta', 'orden', 'id']
 
     # --- validaciones pago ---
     def clean(self):
@@ -51,10 +55,20 @@ class Servicio(models.Model):
             self.anticipo = self.valor
 
     def save(self, *args, **kwargs):
+        # Regla de anticipo según estado
         if self.estado_pago == self.PAGADO:
             self.anticipo = self.valor
         elif self.estado_pago == self.PENDIENTE:
             self.anticipo = 0
+
+        # Autonumerar 'orden' al final de la ruta cuando venga vacío/0
+        if self.ruta_id and (not self.orden or self.orden == 0):
+            # para no provocar query extra cuando ya existe y tiene orden
+            from servicios.models import Servicio as ServicioModel  # evitar import circular
+            qs = ServicioModel.objects.filter(ruta_id=self.ruta_id).exclude(pk=self.pk).order_by('-orden')
+            last = qs.first()
+            self.orden = (last.orden + 1) if last and last.orden else 1
+
         super().save(*args, **kwargs)
 
     @property
@@ -79,6 +93,7 @@ class Servicio(models.Model):
             self.entregado_en = timezone.now()
         if lat is not None: self.lat_entrega = float(lat)
         if lon is not None: self.lon_entrega = float(lon)
+
 
 class ServicioComentario(models.Model):
     servicio = models.ForeignKey('Servicio', on_delete=models.CASCADE, related_name='comentarios')

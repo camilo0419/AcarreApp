@@ -44,6 +44,18 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
     .card-svc .body{flex:1 1 auto;overflow:auto;}
   }
 }
+
+/* ====== Drag & drop ====== (mínimo y aislado) */
+.drag-handle{
+  cursor:grab; user-select:none;
+  display:inline-flex; align-items:center; justify-content:center;
+  width:28px; height:28px; border-radius:6px; border:1px solid #eceef3;
+  background:transparent; font-weight:700; line-height:1;
+}
+.drag-handle:active{ cursor:grabbing; }
+.dots{ letter-spacing:1px; }
+.sortable-chosen{ opacity:.7; }
+.sortable-ghost{ opacity:.35; background:#f6f7fb; }
 </style>
 {% endblock %}
 
@@ -75,6 +87,9 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
       <table class="table table-striped table-hover align-middle mb-0">
         <thead class="table-light">
           <tr>
+            {% if es_gerente and ruta.estado == 'ACTIVA' %}
+              <th class="text-center" style="width:46px;"></th>
+            {% endif %}
             <th>#</th>
             <th>Cliente</th>
             <th>Origen → Destino</th>
@@ -84,9 +99,14 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             <th class="text-center">Acciones</th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="tabla-servicios">
           {% for s in servicios %}
-          <tr>
+          <tr data-id="{{ s.id }}">
+            {% if es_gerente and ruta.estado == 'ACTIVA' %}
+              <td class="text-center">
+                <button type="button" class="drag-handle" aria-label="Reordenar"><span class="dots">⋮⋮</span></button>
+              </td>
+            {% endif %}
             <td>{{ s.id }}</td>
             <td>{{ s.cliente }}</td>
             <td>
@@ -162,7 +182,7 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             </td>
           </tr>
           {% empty %}
-            <tr><td colspan="7" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
+            <tr><td colspan="{% if es_gerente and ruta.estado == 'ACTIVA' %}8{% else %}7{% endif %}" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -170,9 +190,9 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
   </div>
 
   {# ===== Móvil: CARDS ===== #}
-  <div class="only-mobile cards-grid">
+  <div class="only-mobile cards-grid" id="cards-servicios">
     {% for s in servicios %}
-    <article class="card-svc">
+    <article class="card-svc" data-id="{{ s.id }}">
       <div class="body">
         <div class="svc-head">
           <h5 class="svc-title">Servicio #{{ s.id }}</h5>
@@ -262,4 +282,84 @@ function enviarConUbicacion(formId, latId, lonId){
   );
 }
 </script>
+
+{% if es_gerente and ruta.estado == 'ACTIVA' %}
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+  <script>
+  (function(){
+    // CSRF
+    function getCookie(name){
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i=0;i<cookies.length;i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length+1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length+1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+    const csrftoken = getCookie('csrftoken');
+
+    // Extrae orden desde un contenedor (filas o cards)
+    function orderFrom(container, selector){
+      return Array.from(container.querySelectorAll(selector))
+                  .map(el => parseInt(el.dataset.id));
+    }
+
+    async function sendOrder(order){
+      try{
+        const resp = await fetch("{% url 'rutas:reordenar_servicios' ruta.id %}", {
+          method: "POST",
+          headers: {"Content-Type":"application/json","X-CSRFToken": csrftoken},
+          body: JSON.stringify(order)
+        });
+        if(!resp.ok){
+          console.error("Error guardando orden", await resp.text());
+          alert("No se pudo guardar el nuevo orden.");
+        }
+      }catch(e){
+        console.error(e);
+        alert("Error de red guardando el nuevo orden.");
+      }
+    }
+
+    // Sortable en tabla (desktop)
+    const tbody = document.getElementById('tabla-servicios');
+    if (tbody){
+      Sortable.create(tbody, {
+        handle: '.drag-handle',
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        delayOnTouchOnly: true,
+        delay: 150,
+        onEnd: function(){
+          const order = orderFrom(tbody, 'tr[data-id]');
+          sendOrder(order);
+        }
+      });
+    }
+
+    // Sortable en cards (móvil) – arrastra toda la card
+    const cards = document.getElementById('cards-servicios');
+    if (cards){
+      Sortable.create(cards, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        chosenClass: 'sortable-chosen',
+        delayOnTouchOnly: true,
+        delay: 150,
+        onEnd: function(){
+          const order = orderFrom(cards, '.card-svc[data-id]');
+          sendOrder(order);
+        }
+      });
+    }
+  })();
+  </script>
+{% endif %}
 {% endblock %}

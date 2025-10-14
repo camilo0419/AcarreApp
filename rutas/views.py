@@ -135,7 +135,8 @@ class RutaDetailView(DetailView):
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ruta = self.object
-        servicios = ruta.servicios.all().select_related('cliente')
+        servicios = ruta.servicios.select_related('cliente').order_by('orden', 'id')
+
 
         tot_servicios = servicios.count()
         valor_total = sum(s.valor for s in servicios)
@@ -587,3 +588,62 @@ def exportar_cierre_xlsx(request, ruta_id: int):
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     wb.save(resp)
     return resp
+
+
+# rutas/views.py
+import json
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views import View
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+
+from .mixins import GerenteRequiredMixin, _es_gerente
+from .models import Ruta
+from servicios.models import Servicio
+
+@method_decorator([login_required, user_passes_test(is_gerente)], name='dispatch')
+class ReordenarServiciosView(View):
+    """
+    POST JSON: [3, 9, 5, 1, ...]  # IDs de Servicio en el nuevo orden
+    URL: /rutas/<ruta_id>/reordenar/
+    """
+    def post(self, request, ruta_id):
+        try:
+            data = json.loads(request.body.decode("utf-8"))
+        except json.JSONDecodeError:
+            return HttpResponseBadRequest("JSON inválido")
+
+        order = data if isinstance(data, list) else data.get("order")
+        if not isinstance(order, list) or not all(isinstance(x, int) for x in order):
+            return HttpResponseBadRequest("Formato de 'order' inválido")
+
+        ruta = get_object_or_404(Ruta, pk=ruta_id)
+
+        servicios = list(Servicio.objects.filter(ruta_id=ruta.id, id__in=order))
+        if len(servicios) != len(order):
+            return HttpResponseBadRequest("Algunos servicios no pertenecen a la ruta o no existen")
+
+        by_id = {s.id: s for s in servicios}
+        with transaction.atomic():
+            for pos, sid in enumerate(order, start=1):
+                s = by_id[sid]
+                s.orden = pos
+            Servicio.objects.bulk_update(servicios, ["orden"])
+
+        return JsonResponse({"ok": True})
+
+
+@login_required
+def por_ruta(request, ruta_id: int):
+    ruta = get_object_or_404(Ruta, pk=ruta_id)
+    servicios = (Servicio.objects
+                 .select_related('cliente')
+                 .filter(ruta=ruta)
+                 .order_by('orden', 'id'))
+
+    ctx = {
+        "ruta": ruta,
+        "servicios": list(servicios),
+        "es_gerente": is_gerente(request.user),  # <-- clave para mostrar el handle
+    }
+    return render(request, "servicios/por_ruta.html", ctx)
