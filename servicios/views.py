@@ -282,8 +282,10 @@ class ServiciosPorRutaView(ListView):
 
     def dispatch(self, request, *args, **kwargs):
         emp = get_current_empresa()
-        self.ruta = get_object_or_404(Ruta.objects.select_related('conductor','vehiculo'), pk=kwargs['ruta_id'], empresa=emp)
-        # Conductor solo su propia ruta ACTIVA
+        self.ruta = get_object_or_404(
+            Ruta.objects.select_related('conductor','vehiculo'),
+            pk=kwargs['ruta_id'], empresa=emp
+        )
         role = getattr(getattr(request.user, 'userprofile', None), 'rol', '')
         if role == 'CONDUCTOR' and not (request.user.is_staff or request.user.is_superuser):
             if self.ruta.conductor_id != request.user.id:
@@ -293,9 +295,13 @@ class ServiciosPorRutaView(ListView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = Servicio.objects.filter(ruta=self.ruta).select_related('cliente','ruta')
-        # Orden que tenías “antes”: primero los no entregados, luego por id asc (o fecha), ajusta si quieres:
-        return qs.order_by('entregado', 'id')
+        qs = Servicio.objects.filter(
+            ruta=self.ruta
+        ).select_related('cliente','ruta')
+
+        # 👇 CAMBIA ESTO:
+        return qs.order_by('orden', 'id')
+        # (antes estaba: return qs.order_by('entregado', 'id'))
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -346,3 +352,22 @@ class MisServiciosListView(LoginRequiredMixin, ListView):
 
         return qs.order_by('-id')
 
+
+from rutas.views import is_gerente, is_conductor
+
+@login_required
+def list_por_ruta(request, ruta_id: int):
+    ruta = get_object_or_404(Ruta, pk=ruta_id)
+
+    # 👇 CLAVE: mostrar en el orden guardado
+    servicios = (Servicio.objects
+                 .select_related('cliente')
+                 .filter(ruta=ruta)
+                 .order_by('orden', 'id'))
+
+    return render(request, "servicios/list_por_ruta.html", {
+        "ruta": ruta,
+        "servicios": servicios,
+        "es_gerente": is_gerente(request.user),
+        "es_conductor": is_conductor(request.user),
+    })

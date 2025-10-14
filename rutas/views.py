@@ -601,13 +601,14 @@ from .mixins import GerenteRequiredMixin, _es_gerente
 from .models import Ruta
 from servicios.models import Servicio
 
-@method_decorator([login_required, user_passes_test(is_gerente)], name='dispatch')
+
 class ReordenarServiciosView(View):
-    """
-    POST JSON: [3, 9, 5, 1, ...]  # IDs de Servicio en el nuevo orden
-    URL: /rutas/<ruta_id>/reordenar/
-    """
     def post(self, request, ruta_id):
+        if not request.user.is_authenticated:
+            return HttpResponseForbidden("Auth requerida")
+        if not is_gerente(request.user):
+            return HttpResponseForbidden("Solo gerente")
+
         try:
             data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError:
@@ -619,19 +620,21 @@ class ReordenarServiciosView(View):
 
         ruta = get_object_or_404(Ruta, pk=ruta_id)
 
-        servicios = list(Servicio.objects.filter(ruta_id=ruta.id, id__in=order))
-        if len(servicios) != len(order):
-            return HttpResponseBadRequest("Algunos servicios no pertenecen a la ruta o no existen")
+        # Tomamos TODOS los servicios de la ruta (para reindexar 1..n)
+        servicios = list(Servicio.objects.filter(ruta_id=ruta.id).order_by('orden', 'id'))
+
+        # Validaciones básicas
+        ids_ruta = {s.id for s in servicios}
+        if set(order) != ids_ruta:
+            return HttpResponseBadRequest("IDs no coinciden con la ruta")
 
         by_id = {s.id: s for s in servicios}
         with transaction.atomic():
             for pos, sid in enumerate(order, start=1):
-                s = by_id[sid]
-                s.orden = pos
+                by_id[sid].orden = pos
             Servicio.objects.bulk_update(servicios, ["orden"])
 
         return JsonResponse({"ok": True})
-
 
 @login_required
 def por_ruta(request, ruta_id: int):

@@ -111,20 +111,7 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             <td>{{ s.cliente }}</td>
             <td>
               <small>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</small>
-              <div class="small">
-                {% if s.lat_recogida and s.lon_recogida %}
-                  <a class="link-secondary" target="_blank"
-                     href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">📍 Ir a recogida</a>
-                  · <a class="link-secondary" target="_blank"
-                       href="https://www.google.com/maps/search/?api=1&query={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">🔎 Ver</a>
-                {% endif %}
-                {% if s.lat_entrega and s.lon_entrega %}
-                  · <a class="link-secondary" target="_blank"
-                       href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">📦 Ir a entrega</a>
-                  · <a class="link-secondary" target="_blank"
-                       href="https://www.google.com/maps/search/?api=1&query={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">🔎 Ver</a>
-                {% endif %}
-              </div>
+              
             </td>
             <td class="text-end">{{ s.valor|money }}</td>
             <td>
@@ -287,12 +274,11 @@ function enviarConUbicacion(formId, latId, lonId){
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
   (function(){
-    // CSRF
     function getCookie(name){
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
         const cookies = document.cookie.split(';');
-        for (let i=0;i<cookies.length;i++) {
+        for (let i=0;i<cookies.length;i++){
           const cookie = cookies[i].trim();
           if (cookie.substring(0, name.length+1) === (name + '=')) {
             cookieValue = decodeURIComponent(cookie.substring(name.length+1));
@@ -304,30 +290,32 @@ function enviarConUbicacion(formId, latId, lonId){
     }
     const csrftoken = getCookie('csrftoken');
 
-    // Extrae orden desde un contenedor (filas o cards)
-    function orderFrom(container, selector){
+    async function sendOrder(order){
+      const resp = await fetch("{% url 'rutas:reordenar_servicios' ruta.id %}", {
+        method: "POST",
+        headers: {"Content-Type":"application/json","X-CSRFToken": csrftoken},
+        body: JSON.stringify(order),
+        credentials: "same-origin"
+      });
+      if (resp.ok){
+        // feedback visible
+        const n = document.createElement('div');
+        n.textContent = "Orden guardado";
+        n.style.cssText = "position:fixed;bottom:14px;left:14px;background:#0d6efd;color:#fff;padding:8px 12px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:9999;";
+        document.body.appendChild(n);
+        setTimeout(()=>n.remove(), 1200);
+      } else {
+        const t = await resp.text();
+        console.error("Guardar orden:", resp.status, t);
+        alert("No se pudo guardar el nuevo orden.");
+      }
+    }
+
+    function ids(container, selector){
       return Array.from(container.querySelectorAll(selector))
                   .map(el => parseInt(el.dataset.id));
     }
 
-    async function sendOrder(order){
-      try{
-        const resp = await fetch("{% url 'rutas:reordenar_servicios' ruta.id %}", {
-          method: "POST",
-          headers: {"Content-Type":"application/json","X-CSRFToken": csrftoken},
-          body: JSON.stringify(order)
-        });
-        if(!resp.ok){
-          console.error("Error guardando orden", await resp.text());
-          alert("No se pudo guardar el nuevo orden.");
-        }
-      }catch(e){
-        console.error(e);
-        alert("Error de red guardando el nuevo orden.");
-      }
-    }
-
-    // Sortable en tabla (desktop)
     const tbody = document.getElementById('tabla-servicios');
     if (tbody){
       Sortable.create(tbody, {
@@ -337,14 +325,10 @@ function enviarConUbicacion(formId, latId, lonId){
         chosenClass: 'sortable-chosen',
         delayOnTouchOnly: true,
         delay: 150,
-        onEnd: function(){
-          const order = orderFrom(tbody, 'tr[data-id]');
-          sendOrder(order);
-        }
+        onEnd(){ sendOrder(ids(tbody, 'tr[data-id]')); }
       });
     }
 
-    // Sortable en cards (móvil) – arrastra toda la card
     const cards = document.getElementById('cards-servicios');
     if (cards){
       Sortable.create(cards, {
@@ -353,13 +337,11 @@ function enviarConUbicacion(formId, latId, lonId){
         chosenClass: 'sortable-chosen',
         delayOnTouchOnly: true,
         delay: 150,
-        onEnd: function(){
-          const order = orderFrom(cards, '.card-svc[data-id]');
-          sendOrder(order);
-        }
+        onEnd(){ sendOrder(ids(cards, '.card-svc[data-id]')); }
       });
     }
   })();
   </script>
 {% endif %}
+
 {% endblock %}
