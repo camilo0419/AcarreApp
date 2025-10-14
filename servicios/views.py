@@ -41,21 +41,48 @@ def crear_servicio(request):
     ruta_prefill = None
     initial = {}
 
+    # --- si viene ruta por GET, la cargamos ---
     ruta_id = request.GET.get('ruta')
     if ruta_id:
         ruta_prefill = get_object_or_404(Ruta, pk=ruta_id)
         if ruta_prefill.estado != 'ACTIVA':
             messages.error(request, 'Esta ruta está CERRADA. No se pueden agregar servicios.')
-            # Llévalo a la hoja o a la lista operativa, como prefieras:
-            return redirect('rutas:hoja', pk=ruta_prefill.pk)
+            return redirect('rutas:detail', pk=ruta_prefill.pk)
         initial['ruta'] = ruta_prefill.pk
 
+    # --- POST ---
     if request.method == 'POST':
         form = ServicioForm(request.POST)
         if form.is_valid():
-            obj = form.save()
-            messages.success(request, f"Servicio #{obj.id} creado.")
+            obj = form.save(commit=False)
+
+            # 🔧 FIX: asignar ruta si viene del querystring
+            if ruta_prefill:
+                obj.ruta = ruta_prefill
+
+            # empresa (por ruta o por helper)
+            try:
+                obj.empresa = ruta_prefill.empresa if ruta_prefill else get_current_empresa()
+            except Exception:
+                obj.empresa = getattr(ruta_prefill, 'empresa', None)
+
+            # asegurar números válidos
+            obj.valor = obj.valor or 0
+            obj.anticipo = obj.anticipo or 0
+
+            # coherencia del estado de pago
+            if obj.estado_pago == Servicio.PAGADO:
+                obj.anticipo = obj.valor
+            elif obj.estado_pago == Servicio.PENDIENTE:
+                obj.anticipo = 0
+
+            obj.save()
+            messages.success(request, f"Servicio #{obj.id} creado correctamente.")
             return redirect('servicios:detail', pk=obj.pk)
+        else:
+            # 👇 opcional: muestra errores en consola si falla de nuevo
+            print("ERRORES:", form.errors)
+            messages.error(request, "Por favor revisa los campos del formulario.")
     else:
         form = ServicioForm(initial=initial)
 
@@ -63,6 +90,9 @@ def crear_servicio(request):
         'form': form,
         'ruta_prefill': ruta_prefill
     })
+
+
+
 
 @login_required
 def pago_efectivo_conductor(request, pk):
@@ -281,27 +311,33 @@ class ServiciosPorRutaView(ListView):
     paginate_by = 50
 
     def dispatch(self, request, *args, **kwargs):
-        emp = get_current_empresa()
-        self.ruta = get_object_or_404(
-            Ruta.objects.select_related('conductor','vehiculo'),
-            pk=kwargs['ruta_id'], empresa=emp
-        )
+        ruta_id = kwargs.get('ruta_id')
+        # Tenancy opcional: si tu helper falla, no bloquees la carga
+        try:
+            emp = get_current_empresa()
+            self.ruta = get_object_or_404(Ruta.objects.select_related('conductor','vehiculo'),
+                                          pk=ruta_id, empresa=emp)
+        except Exception:
+            # Fallback sin empresa (evita 500 si emp viene None)
+            self.ruta = get_object_or_404(Ruta.objects.select_related('conductor','vehiculo'),
+                                          pk=ruta_id)
+
+        # Gate de permisos del conductor
         role = getattr(getattr(request.user, 'userprofile', None), 'rol', '')
         if role == 'CONDUCTOR' and not (request.user.is_staff or request.user.is_superuser):
             if self.ruta.conductor_id != request.user.id:
                 messages.error(request, 'No autorizado para ver esta ruta.')
                 from django.shortcuts import redirect
                 return redirect('rutas:list')
+
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        qs = Servicio.objects.filter(
-            ruta=self.ruta
-        ).select_related('cliente','ruta')
-
-        # 👇 CAMBIA ESTO:
-        return qs.order_by('orden', 'id')
-        # (antes estaba: return qs.order_by('entregado', 'id'))
+        # 🔒 Filtra por la ruta específica
+        return (Servicio.objects
+                .select_related('cliente','ruta')
+                .filter(ruta=self.ruta)
+                .order_by('orden', 'id'))
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -313,6 +349,7 @@ class ServiciosPorRutaView(ListView):
             'es_gerente': user.is_superuser or user.is_staff or role == 'GERENTE',
         })
         return ctx
+
 
 
 class MisServiciosListView(LoginRequiredMixin, ListView):

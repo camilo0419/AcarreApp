@@ -42,6 +42,9 @@
 
 <form method="post" class="card card-body form-shell">
   {% csrf_token %}
+  {% if form.non_field_errors %}
+    <div class="alert alert-danger mb-3">{{ form.non_field_errors }}</div>
+  {% endif %}
 
   {# Info de ruta fijada arriba (se mantiene), pero abajo ya no mostramos el select #}
   {% if ruta_prefill %}
@@ -50,7 +53,6 @@
         <strong>Ruta:</strong> {{ ruta_prefill.nombre|default:"(sin nombre)" }}
         &nbsp;—&nbsp; <strong>Fecha:</strong> {{ ruta_prefill.fecha_salida|date:"Y-m-d" }}
         &nbsp;—&nbsp; <strong>Conductor:</strong> {% firstof ruta_prefill.conductor.get_full_name ruta_prefill.conductor.username "—" %}
-        
       </div>
     </div>
   {% endif %}
@@ -143,12 +145,18 @@
   const inputAnticipo = document.getElementById('id_anticipo');
   const inputValor = document.getElementById('id_valor');
 
+  // Si no hay valor inicial, por defecto 'PEND'
+  if (selectEstado && !selectEstado.value) {
+    selectEstado.value = 'PEND';
+  }
+
   function setActiveCard(val){
     if (!cardsWrap) return;
     cardsWrap.querySelectorAll('.pay-card').forEach(c=>{
       c.classList.toggle('active', c.dataset.value === val);
     });
   }
+
   function toggleAnticipo(){
     const val = selectEstado ? selectEstado.value : '';
     if (val === 'ANT'){
@@ -163,8 +171,10 @@
     setActiveCard(val);
   }
 
+  // Fuerza estado visual inicial
+  toggleAnticipo();
+
   if (selectEstado){
-    toggleAnticipo();
     selectEstado.addEventListener('change', toggleAnticipo);
   }
 
@@ -191,5 +201,11 @@
   }
   if (inOrigen && btnOrigen) bindMap(inOrigen, btnOrigen);
   if (inDestino && btnDestino) bindMap(inDestino, btnDestino);
+
+  // ---- Normaliza vacíos a 0 al enviar ----
+  document.querySelector('form').addEventListener('submit', () => {
+    if (inputValor && (inputValor.value === '' || inputValor.value == null)) inputValor.value = 0;
+    if (inputAnticipo && (inputAnticipo.value === '' || inputAnticipo.value == null)) inputAnticipo.value = 0;
+  });
 </script>
 {% endblock %}

@@ -1,12 +1,13 @@
 # servicios/urls.py
 from django.urls import path
+from .views import ServiciosPorRutaView
 from . import views
 
 app_name = "servicios"
 
 urlpatterns = [
     # Lista canónica (por ruta)
-    path("por-ruta/<int:ruta_id>/", views.ServiciosPorRutaView.as_view(), name="por_ruta"),
+    path("por-ruta/<int:ruta_id>/", ServiciosPorRutaView.as_view(), name="por_ruta"),
 
     # Detalle / CRUD
     path("<int:pk>/", views.ServicioDetailView.as_view(), name="detail"),

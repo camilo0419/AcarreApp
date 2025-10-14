@@ -46,16 +46,50 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
 }
 
 /* ====== Drag & drop ====== (mínimo y aislado) */
-.drag-handle{
-  cursor:grab; user-select:none;
-  display:inline-flex; align-items:center; justify-content:center;
-  width:28px; height:28px; border-radius:6px; border:1px solid #eceef3;
-  background:transparent; font-weight:700; line-height:1;
+/* ====== Drag & drop ====== */
+.drag-handle {
+  cursor: grab;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
-.drag-handle:active{ cursor:grabbing; }
-.dots{ letter-spacing:1px; }
-.sortable-chosen{ opacity:.7; }
-.sortable-ghost{ opacity:.35; background:#f6f7fb; }
+.drag-handle:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+.drag-handle:active {
+  cursor: grabbing;
+  background: #e0f2fe;
+  border-color: #60a5fa;
+}
+.drag-handle .dots {
+  width: 12px;
+  height: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 2px;
+}
+.drag-handle .dots::before,
+.drag-handle .dots::after,
+.drag-handle .dots div {
+  content: "";
+  width: 3px;
+  height: 3px;
+  background-color: #6b7280;
+  border-radius: 50%;
+  display: block;
+}
+.sortable-chosen { opacity: 0.7; }
+.sortable-ghost { opacity: 0.4; background: #f6f7fb; }
+
 </style>
 {% endblock %}
 
@@ -65,11 +99,14 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
     <h1 class="m-0">Servicios — Ruta #{{ ruta.id }} {{ ruta.nombre|default:"" }}</h1>
     <div class="d-flex gap-2">
       <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">⬅️ Rutas</a>
-      <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.id %}">🧾 Hoja de ruta</a>
+      {% if ruta and ruta.pk %}
+        <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.pk %}">🧾 Hoja de ruta</a>
+      {% endif %}
       {% if es_gerente and ruta.estado == 'ACTIVA' %}
-        <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.id }}">➕ Agregar servicio</a>
+        <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.pk }}">➕ Agregar servicio</a>
       {% endif %}
     </div>
+
   </div>
 
   <p class="text-muted">
@@ -90,6 +127,7 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             {% if es_gerente and ruta.estado == 'ACTIVA' %}
               <th class="text-center" style="width:46px;"></th>
             {% endif %}
+            <th>Orden</th>
             <th>#</th>
             <th>Cliente</th>
             <th>Origen → Destino</th>
@@ -104,9 +142,13 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
           <tr data-id="{{ s.id }}">
             {% if es_gerente and ruta.estado == 'ACTIVA' %}
               <td class="text-center">
-                <button type="button" class="drag-handle" aria-label="Reordenar"><span class="dots">⋮⋮</span></button>
+                <button type="button" class="drag-handle" aria-label="Reordenar">
+                  <span class="dots"><div></div><div></div><div></div><div></div></span>
+                </button>
+
               </td>
             {% endif %}
+            <td>{{ s.orden }}</td>
             <td>{{ s.id }}</td>
             <td>{{ s.cliente }}</td>
             <td>

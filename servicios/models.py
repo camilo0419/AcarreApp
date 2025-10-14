@@ -12,7 +12,7 @@ class Servicio(models.Model):
     cliente = models.ForeignKey('empresa.Cliente', on_delete=models.PROTECT)
     ruta = models.ForeignKey('rutas.Ruta', on_delete=models.CASCADE, related_name='servicios')
 
-    valor = models.PositiveIntegerField()
+    valor = models.PositiveIntegerField(default=0)
     estado_pago = models.CharField(max_length=4, choices=ESTADOS, default=PENDIENTE)
     anticipo = models.PositiveIntegerField(default=0)
 
@@ -43,7 +43,8 @@ class Servicio(models.Model):
     # --- validaciones pago ---
     def clean(self):
         if self.valor is None or self.valor < 0:
-            raise ValidationError({'valor': 'Debe ser un valor positivo.'})
+            raise ValidationError({'valor': 'Debe ser 0 o un valor positivo.'})
+
         if self.estado_pago == self.PENDIENTE and self.anticipo != 0:
             raise ValidationError({'anticipo': 'Deja el anticipo en 0 cuando el estado es Pendiente.'})
         if self.estado_pago == self.ANTICIPO:
