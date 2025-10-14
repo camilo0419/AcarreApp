@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ view.object|default_if_none:"Nuevo" }} Cliente{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">{{ view.object|default_if_none:"Nuevo" }} Cliente</h1>
+<form method="post" novalidate>
+  {% csrf_token %}
+  <div class="row g-3">
+    <div class="col-md-6">{{ form.nombre.label_tag }}{{ form.nombre }}</div>
+    <div class="col-md-6">{{ form.contacto.label_tag }}{{ form.contacto }}</div>
+    <div class="col-md-6">{{ form.telefono.label_tag }}{{ form.telefono }}</div>
+    <div class="col-md-6">{{ form.direccion.label_tag }}{{ form.direccion }}</div>
+    <div class="col-12 form-check">
+      {{ form.activo }} {{ form.activo.label_tag }}
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button type="submit" class="btn btn-primary">Guardar</button>
+    <a href="{% url 'empresa:clientes_list' %}" class="btn btn-outline-secondary btn-same">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Igualar altura de <a> y <button> */
+.btn-same {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  font-weight: 500;
+}
+.btn-primary {
+  height: 44px;
+  border-radius: 22px;
+  padding: 0 18px;
+}
+</style>
+{% endblock %}

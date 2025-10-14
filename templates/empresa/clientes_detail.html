@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Cliente: {{ cliente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h1 class="m-0">Cliente</h1>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{% url 'empresa:clientes_list' %}">⬅ Volver</a>
+    <a class="btn btn-primary" href="{% url 'empresa:clientes_update' cliente.id %}">Editar</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <p class="mb-1"><strong>Nombre:</strong> {{ cliente.nombre }}</p>
+    <p class="mb-1"><strong>Contacto:</strong> {{ cliente.contacto }}</p>
+    <p class="mb-1"><strong>Teléfono:</strong> {{ cliente.telefono }}</p>
+    <p class="mb-0"><strong>Dirección:</strong> {{ cliente.direccion }}</p>
+  </div>
+</div>
+{% endblock %}

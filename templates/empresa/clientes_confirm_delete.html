@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Eliminar cliente{% endblock %}
+
+{% block content %}
+<h1 class="mb-3">Eliminar cliente</h1>
+<p>¿Seguro que deseas eliminar <strong>{{ object.nombre }}</strong>?</p>
+
+<form method="post">
+  {% csrf_token %}
+  <div class="mt-4 d-flex gap-2">
+    <button type="submit" class="btn btn-danger">Sí, eliminar</button>
+    <a href="{% url 'empresa:clientes_list' %}" class="btn btn-outline-secondary btn-same">Cancelar</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.btn-same {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 22px;
+  font-weight: 500;
+}
+.btn-danger {
+  height: 44px;
+  border-radius: 22px;
+  padding: 0 18px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Clientes{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1 class="m-0">Clientes</h1>
+  <a class="btn btn-primary" href="{% url 'empresa:clientes_create' %}">➕ Nuevo</a>
+</div>
+
+<form class="search-wrap" method="get" role="search">
+  <input class="search-input" name="q" placeholder="Buscar por nombre" value="{{ request.GET.q }}">
+  <button class="btn btn-primary search-btn" type="submit">Buscar</button>
+</form>
+
+<!-- Desktop / Tablet (solo tabla) -->
+<div class="only-desktop table-scroll">
+  <table class="table compact align-middle">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Contacto</th>
+        <th>Teléfono</th>
+        <th>Dirección</th>
+        <th>Activo</th>
+        <th class="text-end"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for c in clientes %}
+      <tr>
+        <td><a href="{% url 'empresa:clientes_detail' c.id %}">{{ c.nombre }}</a></td>
+        <td>{{ c.contacto }}</td>
+        <td>{{ c.telefono }}</td>
+        <td>{{ c.direccion }}</td>
+        <td>{{ c.activo|yesno:"Sí,No" }}</td>
+        <td class="text-end">
+          <a class="btn btn-sm btn-outline-secondary" href="{% url 'empresa:clientes_update' c.id %}">Editar</a>
+          <a class="btn btn-sm btn-outline-danger" href="{% url 'empresa:clientes_delete' c.id %}">Eliminar</a>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="6">Sin resultados.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Móvil (solo cards) -->
+<div class="only-mobile cards-grid">
+  {% for c in clientes %}
+  <article class="card">
+    <div class="card-body">
+      <div class="card-head">
+        <h5 class="card-title">
+          <a href="{% url 'empresa:clientes_detail' c.id %}">{{ c.nombre }}</a>
+        </h5>
+        <span class="badge {% if c.activo %}bg-success{% else %}bg-secondary{% endif %}">
+          {{ c.activo|yesno:"Activo,Inactivo" }}
+        </span>
+      </div>
+      <dl class="meta">
+        <div><dt>Contacto</dt><dd>{{ c.contacto }}</dd></div>
+        <div><dt>Teléfono</dt><dd>{{ c.telefono }}</dd></div>
+        <div><dt>Dirección</dt><dd>{{ c.direccion }}</dd></div>
+      </dl>
+    </div>
+    <div class="card-footer actions">
+      <a class="btn btn-sm btn-outline-secondary" href="{% url 'empresa:clientes_update' c.id %}">Editar</a>
+      <a class="btn btn-sm btn-outline-danger" href="{% url 'empresa:clientes_delete' c.id %}">Eliminar</a>
+    </div>
+  </article>
+  {% empty %}
+  <div class="text-muted">Sin resultados.</div>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Layout header */
+.page-header{
+  display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 16px 0;
+}
+
+/* Search bar (pill) */
+.search-wrap{
+  display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:nowrap;
+}
+.search-input{
+  flex:1 1 auto; height:44px; padding:0 14px;
+  border:1px solid #d7d7e0; border-radius:22px; background:#f3f4f7;
+  font-size:14px; color:#222;
+}
+.search-input::placeholder{ color:#7a7e8a; }
+.search-input:focus{
+  outline:none; border-color:#233a86; box-shadow:0 0 0 3px rgba(35,58,134,.12); background:#fff;
+}
+.search-btn{ height:44px; padding:0 18px; border-radius:22px; }
+
+/* Table */
+.table-scroll{ overflow:auto; }
+.table.compact thead th{ font-weight:600; color:#5b6275; background:#eef0f4; }
+.table.compact td, .table.compact th{ padding:.65rem .75rem; }
+
+/* Cards */
+.cards-grid{ display:grid; gap:12px; }
+.card{ border-radius:14px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.05); border:1px solid #eceef3; }
+.card-body{ padding:14px 16px; }
+.card-head{ display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+.card-title{ margin:0; font-size:16px; }
+.meta{ display:grid; gap:6px; margin:10px 0 0 0; }
+.meta dt{ font-weight:700; color:#2b2f3a; }
+.meta dd{ margin:0; color:#333; }
+.actions{ display:flex; justify-content:flex-end; gap:8px; padding:12px 16px; }
+
+/* Responsive visibility */
+.only-desktop{ display:block; }
+.only-mobile{ display:none; }
+@media (max-width: 767.98px){
+  .only-desktop{ display:none; }
+  .only-mobile{ display:block; }
+  .page-header{ flex-direction:column; align-items:flex-start; gap:8px; }
+  .search-wrap{ gap:8px; }
+}
+</style>
+{% endblock %}

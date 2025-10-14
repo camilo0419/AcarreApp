@@ -16,6 +16,7 @@ urlpatterns = [
     path("servicios/", include(("servicios.urls", "servicios"), namespace="servicios")),
     path("cartera/", include(("cartera.urls", "cartera"), namespace="cartera")),
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
+     path("empresa/", include(("empresa.urls", "empresa"), namespace="empresa")),
 
     path("post-login/", views.post_login_redirect, name="post_login"),
     path("", views.index, name="index"),
