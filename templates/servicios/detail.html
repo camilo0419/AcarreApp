@@ -180,7 +180,7 @@
                 <div class="card border-0">
                   <div class="card-header px-0">Registrar pago en efectivo</div>
                   <div class="card-body px-0">
-                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo_conductor' object.id %}">
                       {% csrf_token %}
                       <div class="col-md-8">
                         <input class="form-control" id="inp-monto" type="number" min="1" step="1"
@@ -222,7 +222,7 @@
                 <div class="card border-0">
                   <div class="card-header px-0">Registrar pago en efectivo</div>
                   <div class="card-body px-0">
-                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo' object.id %}">
+                    <form class="row g-2" method="post" action="{% url 'servicios:pago_efectivo_conductor' object.id %}">
                       {% csrf_token %}
                       <div class="col-md-8">
                         <input class="form-control" id="inp-monto" type="number" min="1" step="1"
@@ -364,11 +364,14 @@
 <script>
 function enviarConUbicacion(formId, latId, lonId) {
   const form = document.getElementById(formId);
+  if (!form) return;
   if (!navigator.geolocation) { form.submit(); return; }
   navigator.geolocation.getCurrentPosition(
     function(pos) {
-      document.getElementById(latId).value = pos.coords.latitude;
-      document.getElementById(lonId).value = pos.coords.longitude;
+      const lat = document.getElementById(latId);
+      const lon = document.getElementById(lonId);
+      if (lat) lat.value = pos.coords.latitude;
+      if (lon) lon.value = pos.coords.longitude;
       form.submit();
     },
     function() { form.submit(); },

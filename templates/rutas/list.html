@@ -4,21 +4,38 @@
 
 {% block extra_css %}
 <style>
-  /* Título y acciones con aire inferior */
-  .page-header{display:flex;align-items:center;gap:12px}
-  .page-actions{margin:6px 0 14px}
+/* ===== Scope: solo dentro de #rutas-page ===== */
+#rutas-page .only-desktop{display:block !important;}
+#rutas-page .only-mobile{display:none !important;}
+@media (max-width: 767.98px){
+  #rutas-page .only-desktop{display:none !important;}
+  #rutas-page .only-mobile{display:block !important;}
+}
 
-  /* Estilo local para “Ver cierre” (naranja) */
-  #rutas-page .btn-cierre{
-    background:#f59e0b;       /* amber 500 */
-    border-color:#f59e0b;
-    color:#111827;            /* slate-900, buen contraste */
+/* Estilos existentes + cards móvil */
+.page-header{display:flex;align-items:center;gap:12px}
+.page-actions{margin:6px 0 14px}
+
+#rutas-page .btn-cierre{background:#f59e0b;border-color:#f59e0b;color:#111827;}
+#rutas-page .btn-cierre:hover{background:#d97706;border-color:#d97706;color:#ffffff;}
+
+.cards-grid{display:grid;gap:12px;}
+.card-ruta{border:1px solid #eceef3;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);}
+.card-ruta .body{padding:14px 16px;}
+.card-ruta .footer{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;}
+.ruta-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.ruta-title{margin:0;font-size:16px;}
+.ruta-meta{display:grid;gap:6px;margin:10px 0 0;}
+.ruta-meta dt{font-weight:700;color:#2b2f3a;}
+.ruta-meta dd{margin:0;color:#333;}
+
+@media (max-width: 767.98px){
+  .cards-grid{grid-template-columns:1fr;}
+  @supports (aspect-ratio:1){
+    .card-ruta{aspect-ratio:1.05/1;display:flex;flex-direction:column;}
+    .card-ruta .body{flex:1 1 auto;overflow:auto;}
   }
-  #rutas-page .btn-cierre:hover{
-    background:#d97706;       /* amber 600 */
-    border-color:#d97706;
-    color:#ffffff;
-  }
+}
 </style>
 {% endblock %}
 
@@ -34,7 +51,8 @@
     {% endif %}
   </div>
 
-  <div class="card shadow-sm">
+  {# ===== Desktop/Tablet: TABLA ===== #}
+  <div class="only-desktop card shadow-sm">
     <div class="card-body p-0">
       <div class="table-responsive">
         <table class="table table-striped table-hover align-middle mb-0">
@@ -67,29 +85,15 @@
                   {% endif %}
                 </td>
                 <td class="text-center">
-                  <!-- Botones básicos -->
-                  <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">
-                    Ver
-                  </a>
-                  <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">
-                    Hoja de ruta
-                  </a>
-
-                  <!-- Botón visible solo si la ruta está cerrada -->
+                  <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
+                  <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja de ruta</a>
                   {% if r.estado == "CERRADA" %}
-                    <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">
-                      📊 Ver cierre
-                    </a>
+                    <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">📊 Ver cierre</a>
                   {% endif %}
-
-                  <!-- Botón de borrar (solo para admins y rutas activas) -->
                   {% if user.is_superuser or user.is_staff %}
                     {% if r.estado == "ACTIVA" %}
-                      <a href="{% url 'rutas:borrar' r.pk %}"
-                         class="btn btn-sm btn-outline-dark"
-                         onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">
-                        🗑️ Borrar
-                      </a>
+                      <a href="{% url 'rutas:borrar' r.pk %}" class="btn btn-sm btn-outline-dark"
+                         onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">🗑️ Borrar</a>
                     {% endif %}
                   {% endif %}
                 </td>
@@ -98,11 +102,7 @@
               <tr>
                 <td colspan="7" class="text-center text-muted py-4">
                   {% with rol=user.userprofile.rol|default_if_none:'' %}
-                    {% if rol == 'CONDUCTOR' %}
-                      No tienes rutas asignadas actualmente.
-                    {% else %}
-                      No hay rutas registradas.
-                    {% endif %}
+                    {% if rol == 'CONDUCTOR' %}No tienes rutas asignadas actualmente.{% else %}No hay rutas registradas.{% endif %}
                   {% endwith %}
                 </td>
               </tr>
@@ -111,6 +111,34 @@
         </table>
       </div>
     </div>
+  </div>
+
+  {# ===== Móvil: CARDS ===== #}
+  <div class="only-mobile cards-grid">
+    {% for r in rutas %}
+    <article class="card-ruta">
+      <div class="body">
+        <div class="ruta-head">
+          <h5 class="ruta-title">Ruta #{{ r.id }} — {{ r.nombre|default:"(sin nombre)" }}</h5>
+          <span class="badge {% if r.estado == 'CERRADA' %}text-bg-secondary{% else %}text-bg-success{% endif %}">{{ r.estado }}</span>
+        </div>
+        <dl class="ruta-meta">
+          <div><dt>Fecha</dt><dd>{{ r.fecha_salida|date:"Y-m-d" }}</dd></div>
+          <div><dt>Vehículo</dt><dd>{{ r.vehiculo|default:"—" }}</dd></div>
+          <div><dt>Conductor</dt><dd>{{ r.conductor.username|default:"—" }}</dd></div>
+        </dl>
+      </div>
+      <div class="footer">
+        <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
+        <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja</a>
+        {% if r.estado == "CERRADA" %}
+          <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">Cierre</a>
+        {% endif %}
+      </div>
+    </article>
+    {% empty %}
+      <div class="text-muted">No hay rutas registradas.</div>
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

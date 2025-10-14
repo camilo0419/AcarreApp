@@ -34,8 +34,8 @@
   <div class="card-header">Resumen operativo</div>
   <div class="card-body">
     <div class="ops-grid">
-      <!-- Servicios activos -->
-      <a class="stat" href="{% url 'servicios:mis' %}?solo_no_entregados=1&solo_rutas_activas=1" aria-label="Servicios activos">
+      <!-- Servicios activos (redirigimos a rutas activas; desde allí eliges la ruta y operas) -->
+      <a class="stat" href="{% url 'rutas:list' %}?activas=1" aria-label="Servicios activos">
         <div class="stat-head">
           <span class="stat-icon bg-amber">📦</span>
           <span class="stat-title">Servicios activos</span>
@@ -61,10 +61,9 @@
         <div class="stat-number">{{ entregadas_hoy }}</div>
       </div>
 
-
       <!-- Acciones -->
       <div class="stat-actions">
-        <a class="btn btn-accent btn-block"  href="{% url 'servicios:mis' %}?solo_no_entregados=1&solo_rutas_activas=1">Servicios activos</a>
+        <a class="btn btn-accent btn-block"  href="{% url 'rutas:list' %}?activas=1">Servicios activos</a>
         <a class="btn btn-primary btn-block" href="{% url 'rutas:list' %}?activas=1">Rutas activas</a>
         <a class="btn btn-outline btn-block" href="{% url 'dashboard:operacion' %}">Ingresos operativos</a>
         <a class="btn btn-outline btn-block" href="{% url 'dashboard:cartera' %}">Cartera (CxC)</a>
@@ -95,11 +94,13 @@
         <div id="map-route-{{ r.id }}" class="mini-map" aria-label="Mapa de {{ r.nombre }}"></div>
         <div class="route-actions">
           <a class="btn btn-sm btn-outline" href="{% url 'dashboard:ruta_recorrido' r.id %}">Ver ruta</a>
+          <!-- Acceso directo a servicios de la ruta -->
+          <a class="btn btn-sm btn-outline-primary" href="{% url 'servicios:por_ruta' r.id %}">Servicios</a>
         </div>
       </div>
       {% endfor %}
     </div>
-    <small class="text-muted">Se dibujan marcaciones de <em>recogido</em> y <em>entregado.</small>
+    <small class="text-muted">Se dibujan marcaciones de <em>recogido</em> y <em>entregado</em>.</small>
   </div>
 </section>
 {% endif %}
@@ -116,9 +117,7 @@
 .kpi-value{font-size:1.6rem;font-weight:800;letter-spacing:.01em}
 
 /* ==== Resumen operativo ==== */
-.ops-grid{
-  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px
-}
+.ops-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 @media (max-width:1200px){.ops-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){.ops-grid{grid-template-columns:1fr}}
 
@@ -131,7 +130,13 @@
 .stat:hover{box-shadow:var(--shadow-2);transform:translateY(-1px);border-color:var(--line-300)}
 .stat-head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
 .stat-title{font-weight:700;color:var(--ink-800)}
-.stat-number{font-weight:900;font-size:2.1rem;line-height:1;margin-top:8px}
+
+/* Centrar los números de las stats */
+.stat-number{
+  font-weight:900;font-size:2.1rem;line-height:1;
+  text-align:center; align-self:center; width:100%;
+  margin-top:auto; margin-bottom:auto;
+}
 
 /* iconitos */
 .stat-icon{
@@ -160,22 +165,6 @@
 .route-meta{display:flex;gap:16px;color:var(--ink-700);font-size:.92rem;margin:6px 0 8px}
 .mini-map{width:100%;height:180px;border-radius:12px;border:1px solid var(--line-200);overflow:hidden}
 .route-actions .btn-sm{font-size:.85rem;padding:6px 10px;border-radius:10px}
-
-/* Centrar los números de las stats */
-.stat-number{
-  text-align: center;
-  align-self: center;   /* por si el contenedor usa flex */
-  width: 100%;
-}
-* Centrar número en ambas direcciones sin afectar el header */
-.stat{ display:flex; flex-direction:column; }             /* asegura flex */
-.stat-number{
-  text-align:center;      /* centro horizontal */
-  align-self:center;      /* evita que herede alineaciones raras */
-  margin-top:auto;        /* empuja desde arriba */
-  margin-bottom:auto;     /* empuja desde abajo -> queda centrado */
-  width:100%;
-}
 </style>
 {% endblock %}
 

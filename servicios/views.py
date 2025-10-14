@@ -345,3 +345,4 @@ class MisServiciosListView(LoginRequiredMixin, ListView):
                 qs = qs.filter(entregado_en__isnull=True)
 
         return qs.order_by('-id')
+

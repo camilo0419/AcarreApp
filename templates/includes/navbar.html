@@ -15,10 +15,11 @@
         {% if request.user.is_superuser or request.user.is_staff or rol == 'GERENTE' %}
           {# ---- Menú para GERENTE / STAFF ---- #}
           <nav class="nav main-nav" aria-label="Navegación principal">
-            <a href="{% url 'servicios:mis' %}">Servicios</a>
+            {# ⛔️ Eliminado: Servicios #}
             <a href="{% url 'rutas:list' %}">Rutas</a>
             <a href="{% url 'empresa:clientes_list' %}">Clientes</a>
             <a href="{% url 'dashboard:home' %}">Dashboard</a>
+
           </nav>
         {% else %}
           {# ---- Menú para CONDUCTOR ---- #}
@@ -38,16 +39,11 @@
           </button>
 
           <div class="dropdown" id="userdropdown" hidden role="menu">
-            {# En gerente mostramos “Mis servicios”; en conductor, no #}
-            {% if request.user.is_superuser or request.user.is_staff or rol == 'GERENTE' %}
-              <a href="{% url 'servicios:mis' %}" role="menuitem">Mis servicios</a>
-              <div class="divider"></div>
-            {% endif %}
+            {# ⛔️ Eliminado: "Mis servicios" en el dropdown #}
             <form method="post" action="{% url 'logout' %}" style="display:inline;">
               {% csrf_token %}
               <button type="submit" class="btn btn-link p-0">Salir</button>
             </form>
-
           </div>
         </div>
       {% endwith %}
