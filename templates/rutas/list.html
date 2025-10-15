@@ -22,13 +22,60 @@
 .cards-grid{display:grid;gap:12px;}
 .card-ruta{border:1px solid #eceef3;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);}
 .card-ruta .body{padding:14px 16px;}
-.card-ruta .footer{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;}
+.card-ruta .footer{padding:12px 16px;display:flex;gap:10px;justify-content:center;} /* centrado */
+
+/* Encabezado y meta */
 .ruta-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
 .ruta-title{margin:0;font-size:16px;}
 .ruta-meta{display:grid;gap:6px;margin:10px 0 0;}
 .ruta-meta dt{font-weight:700;color:#2b2f3a;}
 .ruta-meta dd{margin:0;color:#333;}
 
+/* ===== Mini “mapa” simple dentro de la card (móvil) =====
+   No usa tiles ni APIs: es una banda con una línea y punticos
+   distribuidos uniformemente, en el orden de los servicios.        */
+.mini-map{
+  margin-top:10px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  height:110px;
+  background:
+    /* sutil cuadrícula */
+    repeating-linear-gradient(0deg, #f8fafc, #f8fafc 18px, #f1f5f9 18px, #f1f5f9 19px),
+    repeating-linear-gradient(90deg, #f8fafc, #f8fafc 18px, #f1f5f9 18px, #f1f5f9 19px);
+  position:relative;
+  overflow:hidden;
+}
+/* línea principal */
+.mini-map__line{
+  position:absolute; left:10px; right:10px; top:50%;
+  transform:translateY(-50%);
+  height:2px; background:#93c5fd; /* azul suave */
+}
+/* contenedor de marcadores */
+.mini-map__marks{
+  position:absolute; left:10px; right:10px; top:50%;
+  transform:translateY(-50%);
+  display:flex; justify-content:space-between; align-items:center;
+  gap:6px;
+  padding:0 2px;
+}
+.mini-map__dot{
+  width:8px; height:8px; border-radius:50%;
+  background:#2563eb; border:2px solid #bfdbfe; /* borde claro */
+  box-shadow:0 0 0 2px rgba(37,99,235,.12); /* halo sutil */
+}
+/* si hay recogida/entrega con coordenadas, resaltamos (opcional) */
+.mini-map__dot--hasgeo{
+  background:#16a34a; border-color:#86efac; box-shadow:0 0 0 2px rgba(22,163,74,.14);
+}
+
+/* contador “+N” cuando hay más servicios de los que mostramos */
+.mini-map__more{
+  position:absolute; right:8px; bottom:8px;
+  font-size:12px; padding:4px 6px; border-radius:8px;
+  background:#111827; color:#fff; opacity:.85;
+}
 @media (max-width: 767.98px){
   .cards-grid{grid-template-columns:1fr;}
   @supports (aspect-ratio:1){
@@ -122,15 +169,39 @@
           <h5 class="ruta-title">Ruta #{{ r.id }} — {{ r.nombre|default:"(sin nombre)" }}</h5>
           <span class="badge {% if r.estado == 'CERRADA' %}text-bg-secondary{% else %}text-bg-success{% endif %}">{{ r.estado }}</span>
         </div>
+
         <dl class="ruta-meta">
           <div><dt>Fecha</dt><dd>{{ r.fecha_salida|date:"Y-m-d" }}</dd></div>
           <div><dt>Vehículo</dt><dd>{{ r.vehiculo|default:"—" }}</dd></div>
           <div><dt>Conductor</dt><dd>{{ r.conductor.username|default:"—" }}</dd></div>
         </dl>
+
+        {# ===== Mini-mapa cronológico (hasta 8 puntos) ===== #}
+        <div class="mini-map">
+          <div class="mini-map__line"></div>
+          <div class="mini-map__marks">
+            {% with svcs=r.servicios.all|dictsort:"orden" %}
+              {% for s in svcs|slice:":8" %}
+                {# Si tiene alguna coordenada, lo resaltamos (recogida o entrega) #}
+                {% if s.lat_recogida or s.lat_entrega %}
+                  <span class="mini-map__dot mini-map__dot--hasgeo" title="{{ s.cliente }}"></span>
+                {% else %}
+                  <span class="mini-map__dot" title="{{ s.cliente }}"></span>
+                {% endif %}
+              {% endfor %}
+            {% endwith %}
+          </div>
+          {% with total=r.servicios.count %}
+            {% if total > 8 %}
+              <span class="mini-map__more">+{{ total|add:"-8" }}</span>
+            {% endif %}
+          {% endwith %}
+        </div>
       </div>
+
       <div class="footer">
         <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
-        <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja</a>
+        <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja de ruta</a>
         {% if r.estado == "CERRADA" %}
           <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">Cierre</a>
         {% endif %}

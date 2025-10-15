@@ -4,7 +4,7 @@
 
 {% block extra_css %}
 <style>
-/* ===== Scope: solo dentro de #svc-list ===== */
+/* ===== Visibilidad por dispositivo ===== */
 #svc-list .only-desktop{display:block !important;}
 #svc-list .only-mobile{display:none !important;}
 @media (max-width: 767.98px){
@@ -12,101 +12,101 @@
   #svc-list .only-mobile{display:block !important;}
 }
 
-/* tabla (desktop) */
-table.table td.actions{text-align:right;white-space:nowrap;vertical-align:middle;}
-table.table td.actions .row-actions{display:flex !important;gap:8px !important;flex-wrap:wrap !important;justify-content:flex-end !important;align-items:center !important;}
-table.table td.actions form{display:inline-block !important;margin:0 !important;}
-.btn-compact{display:inline-flex !important;align-items:center !important;justify-content:center !important;padding:6px 12px !important;font-size:.92rem !important;line-height:1.15 !important;border-radius:12px !important;}
-@media (max-width: 900px){
-  table.table td.actions{text-align:left;}
-  table.table td.actions .row-actions{justify-content:flex-start !important;}
+/* ===== Botonera superior ===== */
+.top-actions{
+  display:flex; gap:12px; flex-wrap:wrap;
+  margin: 8px 0 12px;
 }
+.top-actions .btn{ display:inline-flex; align-items:center; gap:8px; }
 
-/* cards (móvil) */
-.cards-grid{display:grid;gap:12px;}
+/* ===== Handle drag (6 punticos) ===== */
+.drag-handle{
+  cursor:grab; user-select:none; display:inline-flex; align-items:center; justify-content:center;
+  width:28px; height:28px; border-radius:6px; border:1px solid #e5e7eb; background:#f9fafb;
+}
+.drag-handle .dots{display:grid;grid-template-columns:repeat(2,1fr);grid-template-rows:repeat(3,1fr);gap:2px;}
+.drag-handle .dots div{width:3px;height:3px;background:#6b7280;border-radius:50%;}
+.sortable-chosen{opacity:.7;} .sortable-ghost{opacity:.4;background:#f6f7fb;}
+
+/* ===== Cards móviles compactas ===== */
+.cards-grid{display:grid;gap:10px;}
 .card-svc{border:1px solid #eceef3;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);}
-.card-svc .body{padding:14px 16px;}
-.card-svc .footer{padding:12px 16px;display:flex;gap:8px;justify-content:flex-end;}
-.svc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
-.svc-title{margin:0;font-size:16px;}
-.svc-sub{margin-top:2px;color:#6b7280;font-size:12.5px;}
-.svc-meta{display:grid;gap:6px;margin:10px 0 0;}
-.svc-meta dt{font-weight:700;color:#2b2f3a;}
-.svc-meta dd{margin:0;color:#333;}
-.svc-links{margin-top:6px;font-size:12.5px;}
-.svc-links a{color:#6b7280;text-decoration:none;}
-.svc-links a:hover{text-decoration:underline;}
+.card-svc--compact .body{
+  padding:10px 12px;
+  display:grid;
+  grid-template-columns:auto 36px 1fr auto;
+  grid-template-rows:auto auto auto;
+  align-items:center;
+  column-gap:10px;row-gap:4px;
+}
+.order-badge{
+  font-size:12px;font-weight:600;color:#374151;background:#f3f4f6;border:1px solid #e5e7eb;
+  padding:4px 8px;border-radius:8px;text-align:center;
+}
+.title{font-size:14px;font-weight:700;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sub{grid-column:3 / span 2;color:#6b7280;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
-@media (max-width: 767.98px){
-  .cards-grid{grid-template-columns:1fr;}
-  @supports (aspect-ratio:1){
-    .card-svc{aspect-ratio:1.05/1;display:flex;flex-direction:column;}
-    .card-svc .body{flex:1 1 auto;overflow:auto;}
-  }
+/* Botoncitos inline */
+.inline-actions{
+  grid-column:3 / span 2;
+  display:flex; gap:8px; justify-content:flex-start; align-items:center;
+}
+.btn-chip{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:4px 10px;font-size:12.5px;line-height:1.2;border-radius:999px;
+  border:1px solid #d1d5db;background:#f9fafb;color:#111827;
+}
+.btn-chip:hover{background:#f3f4f6;}
+.btn-chip-success{border-color:#16a34a;color:#065f46;background:#ecfdf5;}
+.btn-chip-info{border-color:#2563eb;color:#1e3a8a;background:#eff6ff;}
+
+/* Estado (reemplaza la burbuja de #id) */
+.status-pill{
+  font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;text-align:center;white-space:nowrap;
+}
+.status-pendiente{background:#f3f4f6;color:#374151;border:1px solid #d1d5db;}
+.status-enruta{background:#eff6ff;color:#1e3a8a;border:1px solid #93c5fd;}
+.status-entregado{background:#ecfdf5;color:#065f46;border:1px solid #16a34a;}
+
+/* Card clickable (sin overlay para no bloquear botones) */
+.card-link{position:relative;}
+.card-link:active{transform:scale(.995);}
+
+/* === Botonera en la columna "Acciones" (desktop) === */
+table.table td.actions .row-actions{
+  display:flex !important;
+  flex-direction: column;        /* apilar */
+  align-items: flex-end;         /* alineado a la derecha */
+  gap: 8px !important;           /* 👈 aire entre botones */
 }
 
-/* ====== Drag & drop ====== (mínimo y aislado) */
-/* ====== Drag & drop ====== */
-.drag-handle {
-  cursor: grab;
-  user-select: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid #e5e7eb;
-  background: #f9fafb;
-  transition: background 0.15s ease, border-color 0.15s ease;
+/* Tamaño y estética uniforme para ambos botones */
+table.table td.actions .row-actions .btn{
+  padding: 6px 12px !important;  /* misma altura */
+  font-size: .92rem !important;
+  line-height: 1.15 !important;
+  border-radius: 12px !important;
+  min-width: 150px;              /* 👈 mismo ancho visual */
 }
-.drag-handle:hover {
-  background: #f3f4f6;
-  border-color: #d1d5db;
-}
-.drag-handle:active {
-  cursor: grabbing;
-  background: #e0f2fe;
-  border-color: #60a5fa;
-}
-.drag-handle .dots {
-  width: 12px;
-  height: 12px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  gap: 2px;
-}
-.drag-handle .dots::before,
-.drag-handle .dots::after,
-.drag-handle .dots div {
-  content: "";
-  width: 3px;
-  height: 3px;
-  background-color: #6b7280;
-  border-radius: 50%;
-  display: block;
-}
-.sortable-chosen { opacity: 0.7; }
-.sortable-ghost { opacity: 0.4; background: #f6f7fb; }
+
 
 </style>
 {% endblock %}
 
 {% block content %}
 <div id="svc-list">
-  <div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="d-flex justify-content-between align-items-center mb-2">
     <h1 class="m-0">Servicios — Ruta #{{ ruta.id }} {{ ruta.nombre|default:"" }}</h1>
-    <div class="d-flex gap-2">
-      <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">⬅️ Rutas</a>
-      {% if ruta and ruta.pk %}
-        <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.pk %}">🧾 Hoja de ruta</a>
-      {% endif %}
-      {% if es_gerente and ruta.estado == 'ACTIVA' %}
-        <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.pk }}">➕ Agregar servicio</a>
-      {% endif %}
-    </div>
+  </div>
 
+  <div class="top-actions">
+    <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">⬅️ Rutas</a>
+    {% if ruta and ruta.pk %}
+      <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.pk %}">🧾 Hoja de ruta</a>
+    {% endif %}
+    {% if es_gerente and ruta.estado == 'ACTIVA' %}
+      <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.pk }}">➕ Agregar servicio</a>
+    {% endif %}
   </div>
 
   <p class="text-muted">
@@ -118,7 +118,72 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
     {% else %}<span class="badge text-bg-secondary">CERRADA</span>{% endif %}
   </p>
 
-  {# ===== Desktop/Tablet: TABLA ===== #}
+  {# ===== Móvil: CARDS ===== #}
+  <div class="only-mobile cards-grid" id="cards-servicios">
+    {% for s in servicios %}
+    <article class="card-svc card-svc--compact card-link" data-id="{{ s.id }}" data-href="{% url 'servicios:detail' s.id %}">
+      <div class="body">
+        {% if es_gerente and ruta.estado == 'ACTIVA' %}
+          <button type="button" class="drag-handle" aria-label="Reordenar">
+            <span class="dots"><div></div><div></div><div></div><div></div><div></div><div></div></span>
+          </button>
+        {% else %}
+          <div style="width:28px;"></div>
+        {% endif %}
+
+        <div class="order-badge">{{ s.orden }}</div>
+
+        <h6 class="title">{{ s.cliente }}</h6>
+        <div>
+          {% if s.entregado %}
+            <span class="status-pill status-entregado">Entregado</span>
+          {% elif s.recogido %}
+            <span class="status-pill status-enruta">En ruta</span>
+          {% else %}
+            <span class="status-pill status-pendiente">Pendiente</span>
+          {% endif %}
+        </div>
+
+        <div class="sub">{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</div>
+
+        {% if ruta.estado == 'ACTIVA' %}
+          {% if es_gerente or es_conductor %}
+            <div class="inline-actions">
+              {% if not s.recogido %}
+                <form id="mrec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="lat" id="mrec-lat-{{ s.id }}">
+                  <input type="hidden" name="lon" id="mrec-lon-{{ s.id }}">
+                  <button type="button"
+                          class="btn-chip btn-chip-info"
+                          onclick="event.stopPropagation(); enviarConUbicacion('mrec-{{ s.id }}','mrec-lat-{{ s.id }}','mrec-lon-{{ s.id }}')">
+                    📦Marcar como - Recogido
+                  </button>
+                </form>
+              {% endif %}
+              {% if s.recogido and not s.entregado %}
+                <form id="ment-{{ s.id }}" method="post" action="{% url 'servicios:marcar_entregado' s.id %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="lat" id="ment-lat-{{ s.id }}">
+                  <input type="hidden" name="lon" id="ment-lon-{{ s.id }}">
+                  <button type="button"
+                          class="btn-chip btn-chip-success"
+                          onclick="event.stopPropagation(); enviarConUbicacion('ment-{{ s.id }}','ment-lat-{{ s.id }}','ment-lon-{{ s.id }}')">
+                    ✅ Marcar como - Entregado
+                  </button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+        {% endif %}
+      </div>
+    </article>
+    {% empty %}
+      <div class="text-muted">Sin servicios en esta ruta.</div>
+    {% endfor %}
+  </div>
+
+  {# ===== Desktop/Tablet: TABLA (sin cambios) ===== #}
   <div class="card only-desktop">
     <div class="table-responsive">
       <table class="table table-striped table-hover align-middle mb-0">
@@ -143,18 +208,14 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             {% if es_gerente and ruta.estado == 'ACTIVA' %}
               <td class="text-center">
                 <button type="button" class="drag-handle" aria-label="Reordenar">
-                  <span class="dots"><div></div><div></div><div></div><div></div></span>
+                  <span class="dots"><div></div><div></div><div></div><div></div><div></div><div></div></span>
                 </button>
-
               </td>
             {% endif %}
             <td>{{ s.orden }}</td>
             <td>{{ s.id }}</td>
             <td>{{ s.cliente }}</td>
-            <td>
-              <small>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</small>
-              
-            </td>
+            <td><small>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</small></td>
             <td class="text-end">{{ s.valor|money }}</td>
             <td>
               {% if s.estado_pago == 'PAG' %}
@@ -168,19 +229,11 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             <td>
               {% if s.entregado %}✅ Entregado
               {% elif s.recogido %}📦 En ruta
-              {% else %}⏳ Pendiente
-              {% endif %}
-              <div class="small text-muted">
-                {% if s.recogido_en %}Recogido: {{ s.recogido_en|date:"Y-m-d H:i" }}{% endif %}
-                {% if s.entregado_en %} · Entregado: {{ s.entregado_en|date:"Y-m-d H:i" }}{% endif %}
-              </div>
+              {% else %}⏳ Pendiente{% endif %}
             </td>
-
             <td class="actions">
               <div class="row-actions">
                 <a class="btn btn-outline-primary btn-compact" href="{% url 'servicios:detail' s.id %}">Detalle</a>
-
-                {# FIX: sin paréntesis; if anidados #}
                 {% if ruta.estado == 'ACTIVA' %}
                   {% if es_gerente or es_conductor %}
                     {% if not s.recogido %}
@@ -211,83 +264,11 @@ table.table td.actions form{display:inline-block !important;margin:0 !important;
             </td>
           </tr>
           {% empty %}
-            <tr><td colspan="{% if es_gerente and ruta.estado == 'ACTIVA' %}8{% else %}7{% endif %}" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
+            <tr><td colspan="{% if es_gerente and ruta.estado == 'ACTIVA' %}9{% else %}8{% endif %}" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-  </div>
-
-  {# ===== Móvil: CARDS ===== #}
-  <div class="only-mobile cards-grid" id="cards-servicios">
-    {% for s in servicios %}
-    <article class="card-svc" data-id="{{ s.id }}">
-      <div class="body">
-        <div class="svc-head">
-          <h5 class="svc-title">Servicio #{{ s.id }}</h5>
-          <span class="badge
-            {% if s.estado_pago == 'PAG' %}text-bg-success
-            {% elif s.estado_pago == 'ANT' %}text-bg-warning
-            {% else %}text-bg-secondary{% endif %}">
-            {% if s.estado_pago == 'PAG' %}Pagado{% elif s.estado_pago == 'ANT' %}Anticipo{% else %}Pendiente{% endif %}
-          </span>
-        </div>
-        <div class="svc-sub">Ruta #{{ ruta.id }} — {{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</div>
-        <dl class="svc-meta">
-          <div><dt>Cliente</dt><dd>{{ s.cliente }}</dd></div>
-          <div><dt>Valor</dt><dd>{{ s.valor|money }}</dd></div>
-          <div><dt>Estado</dt><dd>
-            {% if s.entregado %}✅ Entregado
-            {% elif s.recogido %}📦 En ruta
-            {% else %}⏳ Pendiente{% endif %}
-          </dd></div>
-        </dl>
-        <div class="svc-links">
-          {% if s.lat_recogida and s.lon_recogida %}
-            <a target="_blank" href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">📍 Ir a recogida</a>
-            · <a target="_blank" href="https://www.google.com/maps/search/?api=1&query={{ s.lat_recogida|unlocalize }},{{ s.lon_recogida|unlocalize }}">🔎 Ver</a>
-          {% endif %}
-          {% if s.lat_entrega and s.lon_entrega %}
-            · <a target="_blank" href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">📦 Ir a entrega</a>
-            · <a target="_blank" href="https://www.google.com/maps/search/?api=1&query={{ s.lat_entrega|unlocalize }},{{ s.lon_entrega|unlocalize }}">🔎 Ver</a>
-          {% endif %}
-        </div>
-      </div>
-      <div class="footer">
-        <a class="btn btn-sm btn-outline-primary" href="{% url 'servicios:detail' s.id %}">Detalle</a>
-
-        {# FIX: sin paréntesis; if anidados #}
-        {% if ruta.estado == 'ACTIVA' %}
-          {% if es_gerente or es_conductor %}
-            {% if not s.recogido %}
-              <form id="mrec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="lat" id="mrec-lat-{{ s.id }}">
-                <input type="hidden" name="lon" id="mrec-lon-{{ s.id }}">
-                <button type="button" class="btn btn-sm btn-outline-info"
-                        onclick="enviarConUbicacion('mrec-{{ s.id }}','mrec-lat-{{ s.id }}','mrec-lon-{{ s.id }}')">
-                  Recogido
-                </button>
-              </form>
-            {% endif %}
-            {% if s.recogido and not s.entregado %}
-              <form id="ment-{{ s.id }}" method="post" action="{% url 'servicios:marcar_entregado' s.id %}">
-                {% csrf_token %}
-                <input type="hidden" name="lat" id="ment-lat-{{ s.id }}">
-                <input type="hidden" name="lon" id="ment-lon-{{ s.id }}">
-                <button type="button" class="btn btn-sm btn-outline-success"
-                        onclick="enviarConUbicacion('ment-{{ s.id }}','ment-lat-{{ s.id }}','ment-lon-{{ s.id }}')">
-                  Entregado
-                </button>
-              </form>
-            {% endif %}
-          {% endif %}
-        {% endif %}
-      </div>
-    </article>
-    {% empty %}
-      <div class="text-muted">Sin servicios en esta ruta.</div>
-    {% endfor %}
   </div>
 </div>
 {% endblock %}
@@ -310,12 +291,23 @@ function enviarConUbicacion(formId, latId, lonId){
     { enableHighAccuracy:true, timeout:8000, maximumAge:0 }
   );
 }
+
+/* Tap en card -> ir al detalle, pero ignorar clicks en drag, forms o inline-actions */
+document.addEventListener('click', function(e){
+  const card = e.target.closest('#cards-servicios .card-link');
+  if (!card) return;
+  if (e.target.closest('.inline-actions') || e.target.closest('form') || e.target.closest('.drag-handle')) return;
+  const href = card.getAttribute('data-href');
+  if (href) window.location = href;
+});
 </script>
 
 {% if es_gerente and ruta.estado == 'ACTIVA' %}
+  <!-- CDN de SortableJS -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
   (function(){
+    // CSRF para fetch
     function getCookie(name){
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
@@ -340,24 +332,22 @@ function enviarConUbicacion(formId, latId, lonId){
         credentials: "same-origin"
       });
       if (resp.ok){
-        // feedback visible
         const n = document.createElement('div');
         n.textContent = "Orden guardado";
         n.style.cssText = "position:fixed;bottom:14px;left:14px;background:#0d6efd;color:#fff;padding:8px 12px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,.15);z-index:9999;";
         document.body.appendChild(n);
         setTimeout(()=>n.remove(), 1200);
       } else {
-        const t = await resp.text();
-        console.error("Guardar orden:", resp.status, t);
+        console.error("Guardar orden:", resp.status, await resp.text());
         alert("No se pudo guardar el nuevo orden.");
       }
     }
 
     function ids(container, selector){
-      return Array.from(container.querySelectorAll(selector))
-                  .map(el => parseInt(el.dataset.id));
+      return Array.from(container.querySelectorAll(selector)).map(el => parseInt(el.dataset.id));
     }
 
+    // ----- Desktop (tabla) -----
     const tbody = document.getElementById('tabla-servicios');
     if (tbody){
       Sortable.create(tbody, {
@@ -371,9 +361,11 @@ function enviarConUbicacion(formId, latId, lonId){
       });
     }
 
+    // ----- Móvil (cards) -----
     const cards = document.getElementById('cards-servicios');
     if (cards){
       Sortable.create(cards, {
+        handle: '.drag-handle',
         animation: 150,
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
@@ -385,5 +377,4 @@ function enviarConUbicacion(formId, latId, lonId){
   })();
   </script>
 {% endif %}
-
 {% endblock %}
