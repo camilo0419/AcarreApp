@@ -1,10 +1,9 @@
 {# templates/includes/navbar.html #}
 <header class="navbar">
-  <!-- 👇 padding forzado en el contenedor interno -->
-  <div class="container nav-inner" style="padding-left:28px; padding-right:20px;">
-    <a class="brand" href="{% url 'rutas:list' %}">
-      <!-- 👇 margen forzado en el punto -->
-      <span class="dot" style="margin-left:8px; margin-right:8px; transform:translateY(1px);"></span>
+  <div class="container nav-inner" style="padding-left:18px; padding-right:18px;">
+    <a class="brand" href="{% url 'rutas:list' %}" style="display:flex;align-items:center;gap:10px;">
+      <!-- puntico con respiro -->
+      <span class="dot" style="margin-left:6px;margin-right:8px;transform:translateY(1px);"></span>
       <span>AcarreApp</span>
       {% if empresa_actual %}
         <span class="empresa">· {{ empresa_actual.nombre }}</span>
@@ -25,9 +24,41 @@
           </nav>
         {% endif %}
 
-        <div class="menu-right">
-          <button class="userchip" id="userchip" aria-haspopup="true" aria-expanded="false">
-            <span class="avatar">{{ request.user.get_full_name|default:request.user.username|first|upper }}</span>
+        <style>
+          /* Chip base */
+          .userchip {
+            display:inline-flex; align-items:center; gap:10px;
+            padding:6px 12px; border-radius:999px;
+            background:rgba(255,255,255,.10);
+            border:1px solid rgba(255,255,255,.18);
+            backdrop-filter:saturate(120%) blur(6px);
+            cursor:pointer;
+          }
+          .userchip .avatar {
+            display:grid; place-items:center;
+            width:28px; height:28px; border-radius:999px;
+            background:#ff8a00; color:#111; font-weight:800; font-size:14px;
+          }
+          .userchip .meta { display:flex; flex-direction:column; line-height:1; }
+          .userchip .name { font-weight:600; }
+          .userchip .role { font-size:.8rem; opacity:.85; }
+          .userchip .caret { font-size:12px; opacity:.9; }
+
+          /* ===== MÓVIL: compacto (solo avatar + flechita) ===== */
+          @media (max-width: 640px){
+            .userchip { padding:6px 8px; gap:6px; }
+            .userchip .meta { display:none; }
+            .userchip .caret { display:inline; }
+          }
+        </style>
+
+        <div class="menu-right" style="display:flex;align-items:center;gap:10px;">
+          <!-- Un solo botón que se adapta con CSS -->
+          <button class="userchip" id="userchip" aria-haspopup="true" aria-expanded="false"
+                  title="{{ request.user.get_full_name|default:request.user.username }}">
+            <span class="avatar">
+              {{ request.user.get_full_name|default:request.user.username|first|upper }}
+            </span>
             <span class="meta">
               <span class="name">{{ request.user.get_full_name|default:request.user.username }}</span>
               {% if rol %}<span class="role">{{ rol|title }}</span>{% endif %}
@@ -35,10 +66,17 @@
             <span class="caret">▾</span>
           </button>
 
-          <div class="dropdown" id="userdropdown" hidden role="menu">
+          <div class="dropdown" id="userdropdown" hidden role="menu"
+               style="position:absolute;right:18px;top:56px;background:#fff;color:#111;
+                      border:1px solid rgba(0,0,0,.08);border-radius:12px;
+                      box-shadow:0 8px 24px rgba(0,0,0,.15);padding:10px;z-index:1000;">
             <form method="post" action="{% url 'logout' %}" style="display:inline;">
               {% csrf_token %}
-              <button type="submit" class="btn btn-link p-0">Salir</button>
+              <button type="submit" class="btn btn-link p-0"
+                      style="background:none;border:none;color:#111;text-decoration:none;
+                             padding:6px 10px;border-radius:8px;display:block;">
+                Salir
+              </button>
             </form>
           </div>
         </div>
