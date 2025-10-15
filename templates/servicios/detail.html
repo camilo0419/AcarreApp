@@ -77,6 +77,12 @@
       {% else %}
         <a class="btn btn-outline-secondary" href="{% url 'servicios:mis' %}">⬅️ Volver</a>
       {% endif %}
+      {# 👇 NUEVO: botón Editar para superuser/staff/GERENTE #}
+      {% with rol=user.userprofile.rol|default_if_none:'' %}
+        {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
+          <a class="btn btn-primary" href="{% url 'servicios:editar' object.id %}">✏️ Editar</a>
+        {% endif %}
+      {% endwith %}
     </div>
   </div>
 
@@ -158,6 +164,7 @@
           </div>
           <div class="col-6">
             <p><strong>Saldo:</strong><br>{{ object.saldo_cartera|money }}</p>
+            <p><strong>Cantidad Paquetes:</strong><br>{{ object.cantidad }}</p>  {# 👈 NUEVO #}
           </div>
         </div>
 
@@ -463,10 +470,10 @@ function enviarConUbicacion(formId, latId, lonId) {
     durEl && (durEl.textContent = txt);
   }
 
-  const lat1 = parseFloat("{{ object.lat_recogida|default_if_none:'' }}");
-  const lon1 = parseFloat("{{ object.lon_recogida|default_if_none:'' }}");
-  const lat2 = parseFloat("{{ object.lat_entrega|default_if_none:'' }}");
-  const lon2 = parseFloat("{{ object.lon_entrega|default_if_none:'' }}");
+  const lat1 = parseFloat("{% if object.lat_recogida %}{{ object.lat_recogida|unlocalize }}{% endif %}");
+  const lon1 = parseFloat("{% if object.lon_recogida %}{{ object.lon_recogida|unlocalize }}{% endif %}");
+  const lat2 = parseFloat("{% if object.lat_entrega %}{{ object.lat_entrega|unlocalize }}{% endif %}");
+  const lon2 = parseFloat("{% if object.lon_entrega %}{{ object.lon_entrega|unlocalize }}{% endif %}");
 
   if (distEl && ![lat1,lon1,lat2,lon2].some(isNaN)) {
     const R = 6371; const toRad = d => d*Math.PI/180;

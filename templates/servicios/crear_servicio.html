@@ -79,6 +79,12 @@
         {{ form.valor.label_tag }} {{ form.valor }} {{ form.valor.errors }}
       </div>
 
+      {# 👇 NUEVO: Cantidad #}
+      <div class="mb-3">
+        {{ form.cantidad.label_tag }} {{ form.cantidad }} {{ form.cantidad.errors }}
+        <div class="form-text">Unidades (mínimo 1).</div>
+      </div>
+
       {# ---- ESTADO DE PAGO COMO TARJETAS ---- #}
       <div class="pay-group">
         <label class="form-label">Estado de pago</label>

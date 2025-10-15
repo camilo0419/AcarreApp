@@ -168,12 +168,37 @@ def pago_efectivo_conductor(request, pk):
 @user_passes_test(_is_gerente)
 def editar_servicio(request, pk):
     obj = get_object_or_404(Servicio, pk=pk)
+
+    # No permitir editar si la ruta está cerrada
     if obj.ruta and obj.ruta.estado != 'ACTIVA':
         messages.error(request, 'No puedes editar servicios de una ruta CERRADA.')
         return redirect('servicios:detail', pk=obj.pk)
+
+    if request.method == 'POST':
+        form = ServicioForm(request.POST, instance=obj)
+        if form.is_valid():
+            s = form.save(commit=False)
+
+            # Coherencia del estado de pago (siguiendo tu lógica global)
+            if s.estado_pago == Servicio.PAGADO:
+                s.anticipo = s.valor
+            elif s.estado_pago == Servicio.PENDIENTE:
+                s.anticipo = 0
+            # (En estado ANT se respeta lo que valida el form/model)
+
+            s.save()
+            messages.success(request, f"Servicio #{s.id} actualizado correctamente.")
+            return redirect('servicios:detail', pk=s.pk)
+        else:
+            messages.error(request, "Por favor corrige los errores del formulario.")
     else:
         form = ServicioForm(instance=obj)
-    return render(request, 'servicios/crear_servicio.html', {'form': form, 'ruta_prefill': obj.ruta})
+
+    return render(request, 'servicios/crear_servicio.html', {
+        'form': form,
+        'ruta_prefill': obj.ruta,  # tu template ya lo espera
+    })
+
 
 @login_required
 @user_passes_test(_is_gerente)

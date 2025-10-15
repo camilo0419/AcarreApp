@@ -20,6 +20,17 @@ class ServicioForm(forms.ModelForm):
                     'pattern': r'\d*',
                 })
 
+        # 👇 NUEVO: Cantidad con mínimo 1
+        if 'cantidad' in self.fields:
+            self.fields['cantidad'].widget.attrs.update({
+                'min': 1,
+                'step': 1,
+                'inputmode': 'numeric',
+                'pattern': r'\d*',
+            })
+            if self.fields['cantidad'].initial in (None, '') and getattr(self.instance, 'cantidad', None) in (None, 0):
+                self.fields['cantidad'].initial = 1
+
         # Placeholders útiles
         if 'origen' in self.fields:
             self.fields['origen'].widget.attrs.update({
