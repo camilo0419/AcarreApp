@@ -22,7 +22,7 @@
   .btns-mini{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
 
   /* Pago: botones */
-  .btn-register{margin-top:0 !important;}  /* ← evita que “Registrar” quede más abajo */
+  .btn-register{margin-top:0 !important;}
   .btn-row{
     display:flex;
     gap:10px;
@@ -33,10 +33,10 @@
   }
   .btn-row .btn{
     min-width:120px;
-    height:44px;                 /* misma altura */
-    display:flex;align-items:center;justify-content:center; /* centrado interno */
+    height:44px;
+    display:flex;align-items:center;justify-content:center;
   }
-  .mt-input-btns{margin-top:10px;}        /* aire entre input y botones en móvil */
+  .mt-input-btns{margin-top:10px;}
   @media (min-width: 768px){ .mt-input-btns{margin-top:0;} }
 
   /* Estado operativo “pro” */
@@ -60,7 +60,6 @@
   .pill.ok{background:#eaf7ef;color:#236a3b;}
   .pill.wait{background:#fff6e6;color:#7a4d00;}
 
-  /* Aire extra entre cards que se juntaban */
   .card + .op-wrap{margin-top:18px;}
   .metrics-card .map-iframe{margin-top:8px;}
 </style>
@@ -77,7 +76,6 @@
       {% else %}
         <a class="btn btn-outline-secondary" href="{% url 'servicios:mis' %}">⬅️ Volver</a>
       {% endif %}
-      {# 👇 NUEVO: botón Editar para superuser/staff/GERENTE #}
       {% with rol=user.userprofile.rol|default_if_none:'' %}
         {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
           <a class="btn btn-primary" href="{% url 'servicios:editar' object.id %}">✏️ Editar</a>
@@ -143,8 +141,15 @@
             </div>
 
             <p class="mt-3"><strong>Fecha:</strong><br>
-              {% if object.recogido_en %}{{ object.recogido_en|date:"Y-m-d" }}
-              {% else %}{{ object.entregado_en|date:"Y-m-d"|default:"—" }}{% endif %}
+              {% if object.ruta and object.ruta.fecha_salida %}
+                {{ object.ruta.fecha_salida|date:"Y-m-d" }}
+              {% elif object.recogido_en %}
+                {{ object.recogido_en|date:"Y-m-d" }}
+              {% elif object.entregado_en %}
+                {{ object.entregado_en|date:"Y-m-d" }}
+              {% else %}
+                —
+              {% endif %}
             </p>
           </div>
         </div>
@@ -164,7 +169,7 @@
           </div>
           <div class="col-6">
             <p><strong>Saldo:</strong><br>{{ object.saldo_cartera|money }}</p>
-            <p><strong>Cantidad Paquetes:</strong><br>{{ object.cantidad }}</p>  {# 👈 NUEVO #}
+            <p><strong>Cantidad Paquetes:</strong><br>{{ object.cantidad }}</p>
           </div>
         </div>
 
@@ -301,7 +306,6 @@
         </div>
 
         {% if object.recogido_en and object.entregado_en %}
-        <!-- Métricas en CARD (con mapa de ruta embebido) -->
         <div class="card my-3 metrics-card">
           <div class="card-header">Métricas del recorrido</div>
           <div class="card-body">
@@ -351,7 +355,6 @@
     </div>
   </div>
 
-  <!-- Ubicaciones (UNA card, dos columnas) -->
   {% if object.lat_recogida and object.lon_recogida or object.lat_entrega and object.lon_entrega %}
   <div class="card my-3">
     <div class="card-header">Ubicaciones</div>
@@ -411,7 +414,7 @@ function enviarConUbicacion(formId, latId, lonId) {
   );
 }
 
-/* Pago: botón "Pago total" y mostrar/ocultar Registrar (sin depender de utilidades CSS) */
+/* Pago: botón "Pago total" y mostrar/ocultar Registrar */
 (function(){
   const inp  = document.getElementById('inp-monto');
   const btnR = document.getElementById('btn-registrar');
@@ -444,7 +447,6 @@ function enviarConUbicacion(formId, latId, lonId) {
     }
   });
 
-  // inicia oculto
   showBtn(false);
 })();
 
