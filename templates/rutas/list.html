@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load formatting %}
+{% load formatting l10n %}
 {% block title %}Rutas{% endblock %}
 
 {% block extra_css %}
@@ -12,75 +12,60 @@
   #rutas-page .only-mobile{display:block !important;}
 }
 
-/* Estilos existentes + cards móvil */
+/* Encabezado */
 .page-header{display:flex;align-items:center;gap:12px}
 .page-actions{margin:6px 0 14px}
 
 #rutas-page .btn-cierre{background:#f59e0b;border-color:#f59e0b;color:#111827;}
 #rutas-page .btn-cierre:hover{background:#d97706;border-color:#d97706;color:#ffffff;}
 
+/* ===== Cards móvil ===== */
 .cards-grid{display:grid;gap:12px;}
 .card-ruta{border:1px solid #eceef3;background:#fff;border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);}
-.card-ruta .body{padding:14px 16px;}
-.card-ruta .footer{padding:12px 16px;display:flex;gap:10px;justify-content:center;} /* centrado */
+.card-ruta .body{
+  padding:14px 16px;
+  display:grid;
+  grid-template-columns: 1fr 220px;   /* izq info / der panel */
+  grid-template-rows: auto 1fr;
+  column-gap:14px; row-gap:10px;
+}
+.card-ruta .footer{padding:12px 16px;display:flex;gap:10px;justify-content:center;}
 
-/* Encabezado y meta */
-.ruta-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+.ruta-head{grid-column:1 / span 2;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
 .ruta-title{margin:0;font-size:16px;}
-.ruta-meta{display:grid;gap:6px;margin:10px 0 0;}
+
+/* Píldoras de estado */
+.pill{display:inline-block;padding:6px 12px;border-radius:9999px;font-size:12px;font-weight:700}
+.pill--ok{background:#e8f8ee;color:#166534;border:1px solid #86efac;}
+.pill--bad{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;}
+
+/* Izquierda: meta simple */
+.ruta-meta{display:grid;gap:6px;margin:0;}
 .ruta-meta dt{font-weight:700;color:#2b2f3a;}
 .ruta-meta dd{margin:0;color:#333;}
 
-/* ===== Mini “mapa” simple dentro de la card (móvil) =====
-   No usa tiles ni APIs: es una banda con una línea y punticos
-   distribuidos uniformemente, en el orden de los servicios.        */
-.mini-map{
-  margin-top:10px;
-  border:1px solid #e5e7eb;
-  border-radius:12px;
-  height:110px;
-  background:
-    /* sutil cuadrícula */
-    repeating-linear-gradient(0deg, #f8fafc, #f8fafc 18px, #f1f5f9 18px, #f1f5f9 19px),
-    repeating-linear-gradient(90deg, #f8fafc, #f8fafc 18px, #f1f5f9 18px, #f1f5f9 19px);
-  position:relative;
-  overflow:hidden;
+/* Derecha: panel de métricas */
+.side-info{
+  border:1px solid #eceef3;background:#f8fafc;border-radius:12px;padding:10px;
+  display:flex;flex-direction:column;gap:8px;align-self:stretch;
 }
-/* línea principal */
-.mini-map__line{
-  position:absolute; left:10px; right:10px; top:50%;
-  transform:translateY(-50%);
-  height:2px; background:#93c5fd; /* azul suave */
+.metric{
+  display:flex;justify-content:space-between;align-items:center;
+  background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:8px 10px;
 }
-/* contenedor de marcadores */
-.mini-map__marks{
-  position:absolute; left:10px; right:10px; top:50%;
-  transform:translateY(-50%);
-  display:flex; justify-content:space-between; align-items:center;
-  gap:6px;
-  padding:0 2px;
-}
-.mini-map__dot{
-  width:8px; height:8px; border-radius:50%;
-  background:#2563eb; border:2px solid #bfdbfe; /* borde claro */
-  box-shadow:0 0 0 2px rgba(37,99,235,.12); /* halo sutil */
-}
-/* si hay recogida/entrega con coordenadas, resaltamos (opcional) */
-.mini-map__dot--hasgeo{
-  background:#16a34a; border-color:#86efac; box-shadow:0 0 0 2px rgba(22,163,74,.14);
-}
+.metric small{color:#6b7280;}
+.metric b{font-weight:800;}
+.metric .ok{color:#166534;}
+.metric .bad{color:#991b1b;}
 
-/* contador “+N” cuando hay más servicios de los que mostramos */
-.mini-map__more{
-  position:absolute; right:8px; bottom:8px;
-  font-size:12px; padding:4px 6px; border-radius:8px;
-  background:#111827; color:#fff; opacity:.85;
-}
+/* Botones al pie */
+.card-ruta .footer .btn{min-width:110px}
+
+/* Fallback de grid en navegadores viejos */
 @media (max-width: 767.98px){
-  .cards-grid{grid-template-columns:1fr;}
-  @supports (aspect-ratio:1){
-    .card-ruta{aspect-ratio:1.05/1;display:flex;flex-direction:column;}
-    .card-ruta .body{flex:1 1 auto;overflow:auto;}
+  @supports not (grid-template-columns: 1fr 220px){
+    .card-ruta .body{display:block;}
+    .side-info{margin-top:10px;}
   }
 }
 </style>
@@ -126,9 +111,9 @@
                 <td>{{ r.conductor.username|default:"—" }}</td>
                 <td>
                   {% if r.estado == "ACTIVA" %}
-                    <span class="badge text-bg-success">Activa</span>
+                    <span class="pill pill--ok">ACTIVA</span>
                   {% else %}
-                    <span class="badge text-bg-secondary">Cerrada</span>
+                    <span class="pill pill--bad">CERRADA</span>
                   {% endif %}
                 </td>
                 <td class="text-center">
@@ -165,40 +150,41 @@
     {% for r in rutas %}
     <article class="card-ruta">
       <div class="body">
+        <!-- Encabezado -->
         <div class="ruta-head">
           <h5 class="ruta-title">Ruta #{{ r.id }} — {{ r.nombre|default:"(sin nombre)" }}</h5>
-          <span class="badge {% if r.estado == 'CERRADA' %}text-bg-secondary{% else %}text-bg-success{% endif %}">{{ r.estado }}</span>
+          {% if r.estado == 'CERRADA' %}
+            <span class="pill pill--bad">CERRADA</span>
+          {% else %}
+            <span class="pill pill--ok">ACTIVA</span>
+          {% endif %}
         </div>
 
+        <!-- Columna izquierda (meta) -->
         <dl class="ruta-meta">
           <div><dt>Fecha</dt><dd>{{ r.fecha_salida|date:"Y-m-d" }}</dd></div>
           <div><dt>Vehículo</dt><dd>{{ r.vehiculo|default:"—" }}</dd></div>
           <div><dt>Conductor</dt><dd>{{ r.conductor.username|default:"—" }}</dd></div>
         </dl>
 
-        {# ===== Mini-mapa cronológico (hasta 8 puntos) ===== #}
-        <div class="mini-map">
-          <div class="mini-map__line"></div>
-          <div class="mini-map__marks">
-            {% with svcs=r.servicios.all|dictsort:"orden" %}
-              {% for s in svcs|slice:":8" %}
-                {# Si tiene alguna coordenada, lo resaltamos (recogida o entrega) #}
-                {% if s.lat_recogida or s.lat_entrega %}
-                  <span class="mini-map__dot mini-map__dot--hasgeo" title="{{ s.cliente }}"></span>
-                {% else %}
-                  <span class="mini-map__dot" title="{{ s.cliente }}"></span>
-                {% endif %}
-              {% endfor %}
-            {% endwith %}
+        <!-- Columna derecha (sin duplicados) -->
+        <div class="side-info">
+          <div class="metric">
+            <small>Servicios</small>
+            <b>{{ r.servicios.count }}</b>
           </div>
-          {% with total=r.servicios.count %}
-            {% if total > 8 %}
-              <span class="mini-map__more">+{{ total|add:"-8" }}</span>
+          <div class="metric">
+            <small>Estado</small>
+            {% if r.estado == 'CERRADA' %}
+              <b class="bad">Cerrada</b>
+            {% else %}
+              <b class="ok">Activa</b>
             {% endif %}
-          {% endwith %}
+          </div>
         </div>
       </div>
 
+      <!-- Pie -->
       <div class="footer">
         <a href="{% url 'servicios:por_ruta' r.pk %}" class="btn btn-sm btn-outline-primary">Ver</a>
         <a href="{% url 'rutas:hoja' r.pk %}" class="btn btn-sm btn-outline-secondary">Hoja de ruta</a>
