@@ -1,8 +1,10 @@
 {# templates/includes/navbar.html #}
 <header class="navbar">
-  <div class="container nav-inner">
+  <!-- 👇 padding forzado en el contenedor interno -->
+  <div class="container nav-inner" style="padding-left:28px; padding-right:20px;">
     <a class="brand" href="{% url 'rutas:list' %}">
-      <span class="dot"></span>
+      <!-- 👇 margen forzado en el punto -->
+      <span class="dot" style="margin-left:8px; margin-right:8px; transform:translateY(1px);"></span>
       <span>AcarreApp</span>
       {% if empresa_actual %}
         <span class="empresa">· {{ empresa_actual.nombre }}</span>
@@ -10,19 +12,14 @@
     </a>
 
     {% if request.user.is_authenticated %}
-      {# Detectar rol #}
       {% with rol=request.user.userprofile.rol|default_if_none:'' %}
         {% if request.user.is_superuser or request.user.is_staff or rol == 'GERENTE' %}
-          {# ---- Menú para GERENTE / STAFF ---- #}
           <nav class="nav main-nav" aria-label="Navegación principal">
-            {# ⛔️ Eliminado: Servicios #}
             <a href="{% url 'rutas:list' %}">Rutas</a>
             <a href="{% url 'empresa:clientes_list' %}">Clientes</a>
             <a href="{% url 'dashboard:home' %}">Dashboard</a>
-
           </nav>
         {% else %}
-          {# ---- Menú para CONDUCTOR ---- #}
           <nav class="nav main-nav" aria-label="Navegación principal">
             <a href="{% url 'rutas:list' %}">Rutas</a>
           </nav>
@@ -39,7 +36,6 @@
           </button>
 
           <div class="dropdown" id="userdropdown" hidden role="menu">
-            {# ⛔️ Eliminado: "Mis servicios" en el dropdown #}
             <form method="post" action="{% url 'logout' %}" style="display:inline;">
               {% csrf_token %}
               <button type="submit" class="btn btn-link p-0">Salir</button>
