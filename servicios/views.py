@@ -15,6 +15,16 @@ from .models import Servicio, ServicioComentario
 from rutas.models import Ruta, MovimientoCaja
 import math
 
+def _clientes_de_empresa(emp):
+    qs = Cliente.objects.filter(empresa=emp)
+    try:
+        Cliente._meta.get_field('activo')
+        qs = qs.filter(activo=True)
+    except Exception:
+        pass
+    return qs
+
+
 
 class MisServiciosView(LoginRequiredMixin, ListView):
     model = Servicio
@@ -37,6 +47,8 @@ def _is_gerente(u):
     role = getattr(getattr(u, 'userprofile', None), 'rol', '')
     return u.is_superuser or u.is_staff or role == 'GERENTE'
 
+@login_required
+@user_passes_test(_is_gerente)
 @login_required
 @user_passes_test(_is_gerente)
 def crear_servicio(request):
@@ -65,7 +77,7 @@ def crear_servicio(request):
         # 👉 filtra clientes por empresa (de la ruta si hay, o empresa actual)
         emp = getattr(ruta_prefill, 'empresa', None) or emp_ctx
         if 'cliente' in form.fields:
-            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp, activo=True)
+            form.fields['cliente'].queryset = _clientes_de_empresa(emp)
 
         if form.is_valid():
             obj = form.save(commit=False)
@@ -74,12 +86,10 @@ def crear_servicio(request):
             if ruta_prefill:
                 obj.ruta = ruta_prefill
 
-            # empresa (por ruta o por helper)
-            obj.empresa = getattr(ruta_prefill, 'empresa', None) or emp_ctx
-
-            # ✅ sanity: el cliente elegido debe pertenecer a la misma empresa
+            # ✅ VALIDACIÓN: el cliente debe pertenecer a la empresa de la ruta (o la del contexto)
             cli = getattr(obj, 'cliente', None)
-            if cli and obj.empresa and getattr(cli, 'empresa_id', None) != obj.empresa_id:
+            empresa_dest = getattr(obj.ruta, 'empresa', None) or emp_ctx
+            if cli and empresa_dest and getattr(cli, 'empresa_id', None) != getattr(empresa_dest, 'id', None):
                 form.add_error('cliente', 'El cliente no pertenece a tu empresa.')
                 return render(request, 'servicios/crear_servicio.html', {'form': form, 'ruta_prefill': ruta_prefill})
 
@@ -103,7 +113,7 @@ def crear_servicio(request):
         # 👉 también en GET filtra el select
         emp = getattr(ruta_prefill, 'empresa', None) or emp_ctx
         if 'cliente' in form.fields:
-            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp, activo=True)
+            form.fields['cliente'].queryset = _clientes_de_empresa(emp)
 
     return render(request, 'servicios/crear_servicio.html', {
         'form': form,
@@ -207,14 +217,15 @@ def editar_servicio(request, pk):
         # 👉 filtra clientes por empresa de la ruta del servicio
         emp_form = getattr(obj.ruta, 'empresa', None) or emp
         if 'cliente' in form.fields:
-            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp_form, activo=True)
+            form.fields['cliente'].queryset = _clientes_de_empresa(emp_form)
 
         if form.is_valid():
             s = form.save(commit=False)
 
-            # ✅ sanity: cliente debe pertenecer a la misma empresa
+            # ✅ VALIDACIÓN: cliente debe pertenecer a la empresa de la ruta
             cli = getattr(s, 'cliente', None)
-            if cli and emp_form and getattr(cli, 'empresa_id', None) != emp_form.id:
+            empresa_dest = getattr(s.ruta, 'empresa', None) or emp
+            if cli and empresa_dest and getattr(cli, 'empresa_id', None) != getattr(empresa_dest, 'id', None):
                 form.add_error('cliente', 'El cliente no pertenece a tu empresa.')
                 return render(request, 'servicios/crear_servicio.html', {'form': form, 'ruta_prefill': obj.ruta})
 
@@ -233,12 +244,13 @@ def editar_servicio(request, pk):
         form = ServicioForm(instance=obj)
         emp_form = getattr(obj.ruta, 'empresa', None) or emp
         if 'cliente' in form.fields:
-            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp_form, activo=True)
+            form.fields['cliente'].queryset = _clientes_de_empresa(emp_form)
 
     return render(request, 'servicios/crear_servicio.html', {
         'form': form,
         'ruta_prefill': obj.ruta,
     })
+
 
 
 
