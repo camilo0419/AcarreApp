@@ -5,6 +5,8 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import render
 from .models import PushSubscription
 from .utils import send_webpush_to_user
+from django.http import HttpResponseForbidden
+from django.conf import settings
 
 @login_required
 @require_POST
@@ -55,3 +57,9 @@ def status(request):
     from .models import PushSubscription
     n = PushSubscription.objects.filter(user=request.user).count()
     return JsonResponse({"server_subs": n})
+
+@login_required
+def debug(request):
+    if not settings.DEBUG and not request.user.is_staff:
+        return HttpResponseForbidden("No disponible en producción")
+    return render(request, "notificaciones/debug.html")
