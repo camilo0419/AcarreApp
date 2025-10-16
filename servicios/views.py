@@ -1,4 +1,7 @@
 # servicios/views.py
+from empresa.models import Cliente
+from acarreapp.tenancy import get_current_empresa
+
 from django.contrib import messages
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib.auth.decorators import login_required, user_passes_test
@@ -10,7 +13,6 @@ from django.http import HttpResponseForbidden
 from .forms import ServicioForm, ServicioComentarioForm
 from .models import Servicio, ServicioComentario
 from rutas.models import Ruta, MovimientoCaja
-from acarreapp.tenancy import get_current_empresa
 import math
 
 
@@ -41,10 +43,16 @@ def crear_servicio(request):
     ruta_prefill = None
     initial = {}
 
-    # --- si viene ruta por GET, la cargamos ---
+    # Empresa actual (fallback si no hay ruta prefill)
+    emp_ctx = get_current_empresa()
+
+    # --- si viene ruta por GET, la cargamos y validamos empresa ---
     ruta_id = request.GET.get('ruta')
     if ruta_id:
-        ruta_prefill = get_object_or_404(Ruta, pk=ruta_id)
+        if emp_ctx:
+            ruta_prefill = get_object_or_404(Ruta, pk=ruta_id, empresa=emp_ctx)
+        else:
+            ruta_prefill = get_object_or_404(Ruta, pk=ruta_id)
         if ruta_prefill.estado != 'ACTIVA':
             messages.error(request, 'Esta ruta está CERRADA. No se pueden agregar servicios.')
             return redirect('rutas:detail', pk=ruta_prefill.pk)
@@ -53,18 +61,27 @@ def crear_servicio(request):
     # --- POST ---
     if request.method == 'POST':
         form = ServicioForm(request.POST)
+
+        # 👉 filtra clientes por empresa (de la ruta si hay, o empresa actual)
+        emp = getattr(ruta_prefill, 'empresa', None) or emp_ctx
+        if 'cliente' in form.fields:
+            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp, activo=True)
+
         if form.is_valid():
             obj = form.save(commit=False)
 
-            # 🔧 FIX: asignar ruta si viene del querystring
+            # asignar ruta si vino en querystring
             if ruta_prefill:
                 obj.ruta = ruta_prefill
 
             # empresa (por ruta o por helper)
-            try:
-                obj.empresa = ruta_prefill.empresa if ruta_prefill else get_current_empresa()
-            except Exception:
-                obj.empresa = getattr(ruta_prefill, 'empresa', None)
+            obj.empresa = getattr(ruta_prefill, 'empresa', None) or emp_ctx
+
+            # ✅ sanity: el cliente elegido debe pertenecer a la misma empresa
+            cli = getattr(obj, 'cliente', None)
+            if cli and obj.empresa and getattr(cli, 'empresa_id', None) != obj.empresa_id:
+                form.add_error('cliente', 'El cliente no pertenece a tu empresa.')
+                return render(request, 'servicios/crear_servicio.html', {'form': form, 'ruta_prefill': ruta_prefill})
 
             # asegurar números válidos
             obj.valor = obj.valor or 0
@@ -80,11 +97,13 @@ def crear_servicio(request):
             messages.success(request, f"Servicio #{obj.id} creado correctamente.")
             return redirect('servicios:detail', pk=obj.pk)
         else:
-            # 👇 opcional: muestra errores en consola si falla de nuevo
-            print("ERRORES:", form.errors)
             messages.error(request, "Por favor revisa los campos del formulario.")
     else:
         form = ServicioForm(initial=initial)
+        # 👉 también en GET filtra el select
+        emp = getattr(ruta_prefill, 'empresa', None) or emp_ctx
+        if 'cliente' in form.fields:
+            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp, activo=True)
 
     return render(request, 'servicios/crear_servicio.html', {
         'form': form,
@@ -94,11 +113,22 @@ def crear_servicio(request):
 
 
 
+
 @login_required
 def pago_efectivo_conductor(request, pk):
-    servicio = get_object_or_404(Servicio.objects.select_related('ruta','ruta__empresa','cliente'), pk=pk)
+    emp = get_current_empresa()
+    if emp:
+        servicio = get_object_or_404(
+            Servicio.objects.select_related('ruta','ruta__empresa','cliente'),
+            pk=pk, ruta__empresa=emp
+        )
+    else:
+        servicio = get_object_or_404(
+            Servicio.objects.select_related('ruta','ruta__empresa','cliente'),
+            pk=pk
+        )
+
     user = request.user
-    # Conductor dueño de la ruta o gerente
     role_ok = _is_gerente(user) or (servicio.ruta.conductor_id == user.id)
     if not role_ok:
         return HttpResponseForbidden('No autorizado')
@@ -124,23 +154,15 @@ def pago_efectivo_conductor(request, pk):
             servicio.estado_pago = Servicio.PAGADO if servicio.anticipo >= servicio.valor else Servicio.ANTICIPO
             servicio.save(update_fields=['anticipo','estado_pago'])
 
-            # ---- concepto PRO ----
-            cliente_nombre = getattr(getattr(servicio, 'cliente', None), 'nombre', None)
-            if not cliente_nombre:
-                # fallback a str(cliente) o texto por defecto
-                cliente_obj = getattr(servicio, 'cliente', None)
-                cliente_nombre = str(cliente_obj) if cliente_obj else "Cliente sin nombre"
-
+            cliente_nombre = getattr(getattr(servicio, 'cliente', None), 'nombre', None) or \
+                             (str(getattr(servicio, 'cliente', None)) if getattr(servicio, 'cliente', None) else "Cliente sin nombre")
             origen  = getattr(servicio, 'origen', None)
             destino = getattr(servicio, 'destino', None)
             trayecto = f" ({origen or '—'} → {destino or '—'})" if (origen or destino) else ""
-
             concepto_text = f"Pago servicio – {cliente_nombre}{trayecto}"
 
-            # Si el modelo MovimientoCaja tiene FK a servicio, la enviamos.
             extra = {}
             try:
-                # detecta si existe campo 'servicio'
                 if any(f.name == 'servicio' for f in MovimientoCaja._meta.get_fields()):
                     extra['servicio'] = servicio
             except Exception:
@@ -167,7 +189,12 @@ def pago_efectivo_conductor(request, pk):
 @login_required
 @user_passes_test(_is_gerente)
 def editar_servicio(request, pk):
-    obj = get_object_or_404(Servicio, pk=pk)
+    # 🔒 restringe al tenant
+    emp = get_current_empresa()
+    if emp:
+        obj = get_object_or_404(Servicio, pk=pk, ruta__empresa=emp)
+    else:
+        obj = get_object_or_404(Servicio, pk=pk)
 
     # No permitir editar si la ruta está cerrada
     if obj.ruta and obj.ruta.estado != 'ACTIVA':
@@ -176,15 +203,26 @@ def editar_servicio(request, pk):
 
     if request.method == 'POST':
         form = ServicioForm(request.POST, instance=obj)
+
+        # 👉 filtra clientes por empresa de la ruta del servicio
+        emp_form = getattr(obj.ruta, 'empresa', None) or emp
+        if 'cliente' in form.fields:
+            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp_form, activo=True)
+
         if form.is_valid():
             s = form.save(commit=False)
 
-            # Coherencia del estado de pago (siguiendo tu lógica global)
+            # ✅ sanity: cliente debe pertenecer a la misma empresa
+            cli = getattr(s, 'cliente', None)
+            if cli and emp_form and getattr(cli, 'empresa_id', None) != emp_form.id:
+                form.add_error('cliente', 'El cliente no pertenece a tu empresa.')
+                return render(request, 'servicios/crear_servicio.html', {'form': form, 'ruta_prefill': obj.ruta})
+
+            # Coherencia del estado de pago
             if s.estado_pago == Servicio.PAGADO:
                 s.anticipo = s.valor
             elif s.estado_pago == Servicio.PENDIENTE:
                 s.anticipo = 0
-            # (En estado ANT se respeta lo que valida el form/model)
 
             s.save()
             messages.success(request, f"Servicio #{s.id} actualizado correctamente.")
@@ -193,17 +231,26 @@ def editar_servicio(request, pk):
             messages.error(request, "Por favor corrige los errores del formulario.")
     else:
         form = ServicioForm(instance=obj)
+        emp_form = getattr(obj.ruta, 'empresa', None) or emp
+        if 'cliente' in form.fields:
+            form.fields['cliente'].queryset = Cliente.objects.filter(empresa=emp_form, activo=True)
 
     return render(request, 'servicios/crear_servicio.html', {
         'form': form,
-        'ruta_prefill': obj.ruta,  # tu template ya lo espera
+        'ruta_prefill': obj.ruta,
     })
+
 
 
 @login_required
 @user_passes_test(_is_gerente)
 def eliminar_servicio(request, pk):
-    obj = get_object_or_404(Servicio, pk=pk)
+    emp = get_current_empresa()
+    if emp:
+        obj = get_object_or_404(Servicio, pk=pk, ruta__empresa=emp)
+    else:
+        obj = get_object_or_404(Servicio, pk=pk)
+
     ruta_pk = obj.ruta_id
     if request.method == 'POST':
         obj.delete()
@@ -212,15 +259,22 @@ def eliminar_servicio(request, pk):
     return render(request, 'servicios/confirmar_eliminar.html', {'obj': obj})
 
 
+
 class ServicioDetailView(LoginRequiredMixin, DetailView):
     model = Servicio
     template_name = "servicios/detail.html"
     context_object_name = "object"
 
+    # 🔒 sólo servicios de la empresa actual
+    def get_queryset(self):
+        emp = get_current_empresa()
+        qs = (Servicio.objects
+              .select_related('ruta', 'ruta__conductor', 'ruta__empresa', 'cliente'))
+        return qs.filter(ruta__empresa=emp) if emp else qs
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         s: Servicio = ctx['object']
-
         user = self.request.user
         es_gerente = user.is_superuser or user.is_staff or getattr(getattr(user,'userprofile',None),'rol','')=='GERENTE'
         es_conductor = (getattr(s.ruta, 'conductor_id', None) == user.id)
@@ -228,7 +282,7 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
         # --- métricas tiempo ---
         duracion = None
         if s.recogido_en and s.entregado_en and s.entregado_en >= s.recogido_en:
-            duracion = timesince(s.entregado_en, s.recogido_en)  # ej. “3 hours, 12 minutes”
+            duracion = timesince(s.entregado_en, s.recogido_en)
 
         # --- distancia (Haversine) ---
         distancia_km = None
@@ -239,9 +293,8 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
             dφ = φ2 - φ1; dλ = λ2 - λ1
             a = math.sin(dφ/2)**2 + math.cos(φ1)*math.cos(φ2)*math.sin(dλ/2)**2
             c = 2*math.atan2(math.sqrt(a), math.sqrt(1-a))
-            distancia_km = round(R*c, 2)  # km aprox. línea recta
+            distancia_km = round(R*c, 2)
 
-        # --- URLs de ruta para Google Maps (si hay coordenadas) ---
         directions_url = None
         if all([s.lat_recogida, s.lon_recogida, s.lat_entrega, s.lon_entrega]):
             directions_url = (
@@ -255,11 +308,10 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
             'puede_marcar_recogido': es_conductor and not s.recogido,
             'puede_marcar_entregado': es_conductor and s.recogido and not s.entregado,
             'puede_registrar_efectivo': es_conductor and (s.estado_pago != Servicio.PAGADO),
-
-            'max_pago': s.saldo_cartera,       # tope para el input number
-            'duracion': duracion,               # texto human-readable
-            'distancia_km': distancia_km,       # float o None
-            'directions_url': directions_url,   # str o None
+            'max_pago': s.saldo_cartera,
+            'duracion': duracion,
+            'distancia_km': distancia_km,
+            'directions_url': directions_url,
         })
         return ctx
 
@@ -267,13 +319,20 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
 
 
 
+
 @login_required
 def marcar_recogido(request, pk):
-    s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk)
+    emp = get_current_empresa()
+    if emp:
+        s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk, ruta__empresa=emp)
+    else:
+        s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk)
+
     user = request.user
     if s.ruta.estado != 'ACTIVA':
         messages.error(request, 'La ruta está cerrada.')
         return redirect('servicios:detail', pk=pk)
+
     es_gerente = user.is_superuser or user.is_staff or getattr(getattr(user,'userprofile',None),'rol','')=='GERENTE'
     es_duenio  = (s.ruta.conductor_id == user.id)
     if not (es_gerente or es_duenio):
@@ -287,11 +346,17 @@ def marcar_recogido(request, pk):
 
 @login_required
 def marcar_entregado(request, pk):
-    s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk)
+    emp = get_current_empresa()
+    if emp:
+        s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk, ruta__empresa=emp)
+    else:
+        s = get_object_or_404(Servicio.objects.select_related('ruta','ruta__conductor'), pk=pk)
+
     user = request.user
     if s.ruta.estado != 'ACTIVA':
         messages.error(request, 'La ruta está cerrada.')
         return redirect('servicios:detail', pk=pk)
+
     es_gerente = user.is_superuser or user.is_staff or getattr(getattr(user,'userprofile',None),'rol','')=='GERENTE'
     es_duenio  = (s.ruta.conductor_id == user.id)
     if not (es_gerente or es_duenio):
@@ -302,6 +367,7 @@ def marcar_entregado(request, pk):
         s.save(update_fields=['entregado','entregado_en','lat_entrega','lon_entrega'])
         messages.success(request, 'Servicio marcado como entregado.')
     return redirect('servicios:detail', pk=pk)
+
 
 
 
@@ -316,7 +382,12 @@ def marcar_pagado_gerente(request, pk):
 
 @login_required
 def comentar_servicio(request, pk):
-    servicio = get_object_or_404(Servicio, pk=pk)
+    emp = get_current_empresa()
+    if emp:
+        servicio = get_object_or_404(Servicio, pk=pk, ruta__empresa=emp)
+    else:
+        servicio = get_object_or_404(Servicio, pk=pk)
+
     if request.method == 'POST':
         form = ServicioComentarioForm(request.POST)
         if form.is_valid():
@@ -328,6 +399,7 @@ def comentar_servicio(request, pk):
         else:
             messages.error(request, "No se pudo agregar el comentario.")
     return redirect('servicios:detail', pk=servicio.pk)
+
 
 class ServiciosPorRutaView(ListView):
     model = Servicio
@@ -417,11 +489,16 @@ class MisServiciosListView(LoginRequiredMixin, ListView):
 
 from rutas.views import is_gerente, is_conductor
 
+from rutas.views import is_gerente, is_conductor
+
 @login_required
 def list_por_ruta(request, ruta_id: int):
-    ruta = get_object_or_404(Ruta, pk=ruta_id)
+    emp = get_current_empresa()
+    if emp:
+        ruta = get_object_or_404(Ruta, pk=ruta_id, empresa=emp)
+    else:
+        ruta = get_object_or_404(Ruta, pk=ruta_id)
 
-    # 👇 CLAVE: mostrar en el orden guardado
     servicios = (Servicio.objects
                  .select_related('cliente')
                  .filter(ruta=ruta)
