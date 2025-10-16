@@ -1,0 +1,172 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Debug Push{% endblock %}
+
+{% block extra_css %}
+<style>
+  .debug-wrap { max-width: 720px; margin: 20px auto; display: grid; gap: 12px; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; }
+  .ok { color: #2e7d32; font-weight: 600; }
+  .warn { color: #f57c00; font-weight: 600; }
+  .bad { color: #c62828; font-weight: 600; }
+  button { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--brand-800,#223382); background: var(--brand-800,#223382); color: #fff; cursor: pointer; }
+  button.secondary { background: transparent; color: var(--brand-800,#223382); }
+  .card { border: 1px solid #3333; border-radius: 12px; padding: 12px; }
+  .small { font-size: 0.9rem; opacity: .85; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="debug-wrap">
+  <h1>Diagnóstico Web Push</h1>
+
+  <!-- Estado actual -->
+  <div class="card">
+    <div class="row">
+      <div>Service Worker registrado (<span class="mono">/static/sw.js</span>)</div>
+      <div id="swStatus" class="warn">?</div>
+    </div>
+    <div class="row">
+      <div>Permiso de notificaciones</div>
+      <div id="permStatus" class="warn">?</div>
+    </div>
+    <div class="row">
+      <div>Suscripción Push (endpoint guardado)</div>
+      <div id="subStatus" class="warn">?</div>
+    </div>
+    <div class="small">VAPID (pública) usada aquí: <span class="mono" id="vapidPrefix"></span>…</div>
+  </div>
+
+  <!-- Acciones -->
+  <div class="card">
+    <div class="row">
+      <div class="small">1) Registrar SW y solicitar permiso + suscribir este navegador para tu usuario actual.</div>
+      <div><button id="btnSubscribe">Suscribirme</button></div>
+    </div>
+    <div class="row">
+      <div class="small">2) Enviar notificación de prueba a <b>tu usuario</b> (este login).</div>
+      <div><button id="btnPing" class="secondary">Probar ping</button></div>
+    </div>
+    <div class="row">
+      <div class="small">3) Reset completo de suscripción (cliente + servidor) por si cambiaste claves VAPID.</div>
+      <div><button id="btnReset" class="secondary">Reset suscripción</button></div>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div class="card">
+    <div class="small">
+      Nota: para recibir la notificación de <b>ruta creada</b>, <b>servicio creado</b> o <b>reorden</b>,
+      deben estar suscritos los usuarios de la empresa. Este debug sólo confirma que
+      este navegador/usuario están correctamente configurados.
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/push.js' %}"></script>
+<script>
+(function(){
+  const VAPID = "{{ VAPID_PUBLIC_KEY|default:'' }}";
+  document.getElementById('vapidPrefix').textContent = VAPID ? VAPID.slice(0, 16) : "(vacía)";
+
+  const swEl = document.getElementById('swStatus');
+  const permEl = document.getElementById('permStatus');
+  const subEl = document.getElementById('subStatus');
+  const btnSub = document.getElementById('btnSubscribe');
+  const btnPing = document.getElementById('btnPing');
+  const btnReset = document.getElementById('btnReset');
+
+  function mark(el, status, text){
+    el.classList.remove('ok','warn','bad');
+    el.classList.add(status);
+    el.textContent = text;
+  }
+
+  async function serverSubsCount(){
+    try {
+      const r = await fetch("/push/status/", {credentials: "include"});
+      const j = await r.json();
+      return j && typeof j.server_subs === "number" ? j.server_subs : 0;
+    } catch(e){ return 0; }
+  }
+
+  async function checkAll(){
+    try{
+      const reg = await navigator.serviceWorker.getRegistration('/static/sw.js');
+      mark(swEl, reg ? 'ok' : 'bad', reg ? 'OK' : 'NO');
+
+      const perm = (window.Notification && Notification.permission) ? Notification.permission : 'unsupported';
+      mark(permEl, perm === 'granted' ? 'ok' : (perm === 'denied' ? 'bad' : 'warn'), perm);
+
+      // cliente (navegador)
+      let clientHas = false;
+      if (reg) {
+        const ready = await navigator.serviceWorker.ready;
+        const sub = await ready.pushManager.getSubscription();
+        clientHas = !!sub;
+      }
+
+      // servidor (DB)
+      const serverHas = await serverSubsCount();
+
+      if (clientHas && serverHas > 0)       mark(subEl, 'ok', `OK (${serverHas} en servidor)`);
+      else if (clientHas || serverHas > 0)  mark(subEl, 'warn', clientHas ? 'Cliente OK, servidor NO' : `Servidor ${serverHas}, cliente NO`);
+      else                                   mark(subEl, 'warn', 'NO');
+    } catch(e){
+      mark(swEl, 'bad', 'ERR'); console.warn(e);
+    }
+  }
+
+  // Suscribir
+  btnSub.addEventListener('click', async () => {
+    const perm = (window.Notification && Notification.permission) ? Notification.permission : 'unsupported';
+    if (perm === 'denied') {
+      alert(
+        'Notificaciones bloqueadas.\n\n' +
+        '1) Haz clic en el candado junto a la URL.\n' +
+        '2) En "Permisos/Configuración del sitio", cambia Notificaciones a "Permitir".\n' +
+        '3) Recarga esta página y vuelve a presionar "Suscribirme".'
+      );
+      return;
+    }
+    if (!VAPID) { alert('Falta VAPID_PUBLIC_KEY en template'); return; }
+    try {
+      await initAcarrePush(VAPID);   // crea la sub y hace POST /push/subscribe/
+      await checkAll();
+      alert('Suscripción intentada.');
+    } catch(e){ console.warn(e); alert('Error suscribiendo'); }
+  });
+
+  // Probar ping
+  btnPing.addEventListener('click', async () => {
+    try{
+      const res = await fetch("/push/test-me/", {credentials: "include"});
+      const j = await res.json();
+      if (j.ok) alert('¡Ping enviado! Revisa la notificación.');
+      else alert('Falló el ping.');
+    } catch(e){ console.warn(e); alert('Error enviando ping'); }
+  });
+
+  // Reset suscripción (cliente + servidor)
+  btnReset.addEventListener('click', async () => {
+    try{
+      // Cliente: desuscribir
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) await sub.unsubscribe();
+      // Servidor: borrar mis subs
+      await fetch("/push/delete-my-subs/", {credentials: "include"});
+      await checkAll();
+      alert('Suscripción reseteada. Ahora presiona "Suscribirme".');
+    } catch(e){ console.warn(e); alert('Error en reset'); }
+  });
+
+  // Auto-check al abrir
+  checkAll();
+})();
+</script>
+{% endblock %}

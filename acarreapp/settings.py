@@ -21,6 +21,7 @@ ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.
 # Apps
 # =========================
 INSTALLED_APPS = [
+    # Django core
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -36,6 +37,7 @@ INSTALLED_APPS = [
     "servicios",
     "cartera",
     "dashboard",
+    "notificaciones",
 
     # Third-party
     "django_filters",
@@ -78,6 +80,8 @@ TEMPLATES = [{
             "django.contrib.messages.context_processors.messages",
             # Empresa actual a todas las plantillas
             "acarreapp.tenancy.empresa_context",
+            # Clave pública VAPID disponible en templates
+            "acarreapp.context_processors.vapid_public_key",
         ],
     },
 }]
@@ -117,21 +121,27 @@ USE_TZ = True
 # Static & Media
 # =========================
 STATIC_URL = "/static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]        # tus assets (css/js/img) en desarrollo
-STATIC_ROOT = BASE_DIR / "staticfiles"          # destino de collectstatic en producción
+STATICFILES_DIRS = [BASE_DIR / "static"]        # assets en desarrollo
+STATIC_ROOT = BASE_DIR / "staticfiles"          # destino collectstatic
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 # =========================
-# Auth redirects (usar NOMBRES, no rutas)
+# Auth redirects
 # =========================
 LOGIN_REDIRECT_URL = "/post-login/"
 LOGIN_URL = "/accounts/login/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
 
-
 # =========================
 # Misc
 # =========================
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# =========================
+# Web Push (VAPID)
+# =========================
+VAPID_PUBLIC_KEY  = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_PRIVATE_KEY = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_SUBJECT     = os.getenv("VAPID_SUBJECT", "mailto:c.vargas0419@gmail.com")

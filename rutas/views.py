@@ -21,6 +21,9 @@ from django.db import IntegrityError
 from empresa.models import Vehiculo, Cliente   # ajusta si están en otra app
 from servicios.models import Servicio          # idem
 
+from notificaciones.utils import send_webpush_to_empresa
+
+
 import csv
 
 
@@ -609,6 +612,7 @@ class ReordenarServiciosView(View):
         if not is_gerente(request.user):
             return HttpResponseForbidden("Solo gerente")
 
+        # ---- Body JSON ----
         try:
             data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError:
@@ -618,23 +622,42 @@ class ReordenarServiciosView(View):
         if not isinstance(order, list) or not all(isinstance(x, int) for x in order):
             return HttpResponseBadRequest("Formato de 'order' inválido")
 
+        # ---- Ruta y servicios actuales ----
         ruta = get_object_or_404(Ruta, pk=ruta_id)
+        servicios = list(Servicio.objects.filter(ruta_id=ruta.id).order_by("orden", "id"))
 
-        # Tomamos TODOS los servicios de la ruta (para reindexar 1..n)
-        servicios = list(Servicio.objects.filter(ruta_id=ruta.id).order_by('orden', 'id'))
-
-        # Validaciones básicas
+        # ---- Validaciones ----
         ids_ruta = {s.id for s in servicios}
         if set(order) != ids_ruta:
             return HttpResponseBadRequest("IDs no coinciden con la ruta")
 
+        # ---- Persistencia y notificación ----
         by_id = {s.id: s for s in servicios}
         with transaction.atomic():
             for pos, sid in enumerate(order, start=1):
                 by_id[sid].orden = pos
             Servicio.objects.bulk_update(servicios, ["orden"])
 
+            # Notificación a toda la empresa (se enviará post-commit por on_commit en utils)
+            empresa = getattr(ruta, "empresa", None)
+            if not empresa:
+                try:
+                    from acarreapp.tenancy import get_current_empresa
+                    empresa = get_current_empresa()
+                except Exception:
+                    empresa = None
+
+            if empresa:
+                send_webpush_to_empresa(
+                    empresa,
+                    "↕️ Orden de ruta actualizado",
+                    f"Ruta #{ruta.id}: se modificó el orden de servicios.",
+                    {"url": f"/rutas/{ruta.id}/detalle/"},
+                    # exclude_user=request.user,  # descomenta si no quieres notificar al actor
+                )
+
         return JsonResponse({"ok": True})
+
 
 @login_required
 def por_ruta(request, ruta_id: int):

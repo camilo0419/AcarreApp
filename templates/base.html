@@ -16,8 +16,6 @@
     <link rel="manifest" href="{% static 'icons/site.webmanifest' %}">
     <meta name="theme-color" content="#223382">
 
-
-
     {% block extra_css %}{% endblock %}
   </head>
 
@@ -49,6 +47,19 @@
     {# Bloque para scripts específicos por vista #}
     {% block extra_js %}{% endblock %}
 
-    
+    {# --- Web Push --- #}
+    {% if request.user.is_authenticated %}
+      <script src="{% static 'js/push.js' %}"></script>
+      <script>
+        window.addEventListener('load', function () {
+          // registra SW + solicita permiso + guarda suscripción
+          if ("{{ VAPID_PUBLIC_KEY|default:'' }}") {
+            initAcarrePush("{{ VAPID_PUBLIC_KEY }}");
+          } else {
+            console.warn("VAPID_PUBLIC_KEY no disponible en template.");
+          }
+        });
+      </script>
+    {% endif %}
   </body>
 </html>

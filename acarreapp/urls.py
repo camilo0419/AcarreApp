@@ -24,4 +24,6 @@ urlpatterns = [
 
     # alias opcional SOLO para login (no para logout)
     path("account/login/", RedirectView.as_view(pattern_name="login", permanent=False)),
+
+    path("push/", include("notificaciones.urls")),
 ]
