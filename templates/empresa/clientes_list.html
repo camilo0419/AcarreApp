@@ -35,7 +35,6 @@
         <td>{{ c.activo|yesno:"Sí,No" }}</td>
         <td class="text-end">
           <a class="btn btn-sm btn-outline-secondary" href="{% url 'empresa:clientes_update' c.id %}">Editar</a>
-          <a class="btn btn-sm btn-outline-danger" href="{% url 'empresa:clientes_delete' c.id %}">Eliminar</a>
         </td>
       </tr>
       {% empty %}

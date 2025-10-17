@@ -33,8 +33,8 @@ INSTALLED_APPS = [
     # Project apps
     "empresa",
     "usuarios",
-    "rutas",
-    "servicios",
+    "rutas.apps.RutasConfig",
+    "servicios.apps.ServiciosConfig",
     "cartera",
     "dashboard",
     "notificaciones",
