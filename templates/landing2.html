@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="es" class="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>AcarreApp – Landing PRO (dinámica)</title>
+  <meta name="theme-color" content="#007BFF" />
+  <meta name="description" content="AcarreApp: logística, rutas, cierres de caja y notificaciones Web Push." />
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <!-- Fuentes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@700&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet"/>
+  <style>
+    :root{
+      --primary:#007BFF; --accent:#FF7A00; --dark:#0A192F; --ink:#002B5B; --muted:#F4F4F4;
+      --route-w: 92px; /* ancho de barra de ruta fija */
+    }
+    body{font-family:Inter,system-ui,Arial,sans-serif; color:var(--ink); background:#fff; min-height:100dvh;}
+    .display{font-family:Poppins,Inter,sans-serif; font-weight:700;}
+
+    /* Ruta fija derecha */
+    .route-fixed{
+      position:fixed; top:0; right:0; width:var(--route-w); height:100vh; z-index:40; pointer-events:none;
+      filter: drop-shadow(0 20px 40px rgba(0,0,0,.15));
+    }
+
+    /* Compensación contenido en desktop */
+    @media (min-width: 1024px){ .pad-route{ padding-right: calc(var(--route-w) + 24px); } }
+
+    /* Progreso superior */
+    #scrollbar{position:fixed; left:0; top:0; height:3px; width:0; z-index:60;
+      background:linear-gradient(90deg,var(--accent),var(--primary));}
+
+    /* === STICKY CTA (desktop = pill centrado; móvil = barra full-width) === */
+    .sticky-cta{
+      position:fixed; z-index:55;
+      left:50%; bottom:18px; transform:translateX(-50%) translateY(120%);
+      height:48px; padding:0 24px;
+      border-radius:12px;
+      display:inline-flex; align-items:center; gap:.5rem;
+      background:var(--primary); color:#fff; font-weight:700;
+      box-shadow:0 14px 38px -16px rgba(0,0,0,.35);
+      transition: transform .45s cubic-bezier(.2,.65,.3,1);
+    }
+    .sticky-cta.show{ transform:translateX(-50%) translateY(0); }
+
+    @media (max-width: 768px){
+      .sticky-cta{
+        left:12px; right:12px; width:auto;
+        bottom:calc(env(safe-area-inset-bottom, 16px) + 12px);
+        transform:translateY(140%);
+        border-radius:14px; height:56px; padding:0 18px;
+        justify-content:center;
+      }
+      .sticky-cta.show{ transform:translateY(0); }
+    }
+
+    /* Hero: gradiente animado */
+    .hero-bg{
+      background:
+        radial-gradient(800px 400px at 10% 30%, rgba(0,123,255,.22), transparent 60%),
+        radial-gradient(700px 350px at 90% 15%, rgba(255,122,0,.20), transparent 60%),
+        linear-gradient(135deg, #0b1f3b 0%, #0a1529 100%);
+      animation: bgshift 16s ease-in-out infinite alternate;
+    }
+    @keyframes bgshift{ 0%{ background-position:0% 0%,100% 50%,0 0;}
+                         100%{ background-position:20% 20%,80% 10%,0 0;} }
+
+    /* Parallax header logo */
+    .parallax{ transform: translate3d(var(--tx,0), var(--ty,0), 0); will-change: transform; transition: transform .08s linear; }
+
+    /* Reveal */
+    .reveal{opacity:0; transform:translateY(16px) scale(.98); transition:all .7s cubic-bezier(.2,.65,.3,1);}
+    .reveal.in{opacity:1; transform:none;}
+
+    /* Cards flotantes sutiles */
+    .floaty{ box-shadow: 0 20px 50px -20px rgba(0,0,0,.35); }
+
+    /* Partículas (estrellitas) — más visibles y detrás del contenido */
+    #particles{
+      position:absolute; inset:0; z-index:0;
+      opacity:.6;
+    }
+
+    /* === CONTENEDOR DE TOASTS (para ubicar burbujas) === */
+    #toasts{
+      position:fixed;
+      z-index:56;                 /* por encima del header (z-50) y del CTA (55) */
+      right:calc(var(--route-w) + 16px);
+      bottom:calc(18px + 64px);   /* despega del CTA sticky */
+      display:flex; flex-direction:column; gap:8px;
+    }
+    /* En móvil: toasts arriba (debajo del header) */
+    @media (max-width: 768px){
+      #toasts{
+        top:calc(env(safe-area-inset-top, 0px) + 12px);
+        right:12px; left:12px; bottom:auto;
+        align-items:flex-end;
+      }
+    }
+
+    /* Notificaciones burbuja (ancho adaptable) */
+    .bubble{
+      background:#fff; color:var(--ink); border-radius:.9rem; padding:.75rem 1rem;
+      display:flex; align-items:center; gap:.6rem; box-shadow:0 20px 50px -20px rgba(0,0,0,.35);
+      opacity:0; transform:translateY(12px) scale(.95);
+      max-width:min(420px, 92vw);
+      will-change:transform,opacity;
+    }
+    .bubble.show{ opacity:1; transform:translateY(0) scale(1); transition:all .25s ease; }
+    .bubble.hide{ opacity:0; transform:translateY(12px) scale(.95); transition:all .22s ease; }
+  </style>
+</head>
+<body class="selection:bg-blue-200/40">
+  <div id="scrollbar"></div>
+
+  <!-- RUTA VERTICAL FIJA (camión recorre toda la página) -->
+  <svg class="route-fixed" viewBox="0 0 100 1000" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+    <defs>
+      <linearGradient id="rg" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="#FF7A00"/><stop offset="100%" stop-color="#007BFF"/>
+      </linearGradient>
+    </defs>
+    <path id="vroad"
+      d="M 50 24
+         C 20 120, 80 210, 50 300
+         C 20 390, 80 480, 50 570
+         C 20 660, 80 750, 50 840
+         C 20 900, 80 960, 50 980"
+      fill="none" stroke="url(#rg)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path
+      d="M 50 24
+         C 20 120, 80 210, 50 300
+         C 20 390, 80 480, 50 570
+         C 20 660, 80 750, 50 840
+         C 20 900, 80 960, 50 980"
+      fill="none" stroke="#fff" stroke-opacity=".75" stroke-dasharray="6 10" stroke-width="1.6"/>
+
+    <!-- Camión -->
+    <g id="truck" transform="translate(50,24)">
+      <g>
+        <rect x="-14" y="-10" width="28" height="20" rx="4" fill="#007BFF"></rect>
+        <rect x="14" y="-8" width="14" height="16" rx="3" fill="#1E293B"></rect>
+        <circle cx="-8" cy="12" r="4" fill="#0B1324"></circle>
+        <circle cx="6" cy="12" r="4" fill="#0B1324"></circle>
+        <rect x="-9" y="-6" width="14" height="8" rx="1.5" fill="#fff" opacity=".95"></rect>
+        <rect x="16" y="-5" width="6" height="6" rx="1" fill="#fff" opacity=".95"></rect>
+      </g>
+    </g>
+  </svg>
+
+  <!-- CTA sticky -->
+  <a id="stickyCta" href="#prueba" class="sticky-cta">
+    Solicitar prueba gratuita <span class="material-symbols-outlined">arrow_forward</span>
+  </a>
+
+  <!-- HEADER -->
+  <header class="sticky top-0 z-50 bg-white/75 backdrop-blur border-b">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between pad-route">
+      <div class="flex items-center gap-2 parallax" style="--tx:0;--ty:0;">
+        <span class="material-symbols-outlined text-[var(--primary)] text-4xl">local_shipping</span>
+        <h1 class="display text-xl text-[var(--ink)]">AcarreApp</h1>
+      </div>
+      <nav class="hidden md:flex items-center gap-6 text-sm text-[var(--ink)]/70">
+        <a href="#features" class="hover:text-[var(--ink)]">Funciones</a>
+        <a href="#pasos" class="hover:text-[var(--ink)]">Cómo funciona</a>
+        <a href="#confianza" class="hover:text-[var(--ink)]">Confianza</a>
+        <a href="#prueba" class="h-12 px-6 rounded-lg bg-white text-[var(--primary)] font-bold inline-flex items-center justify-center shadow-lg">Prueba Gratuita</a>
+      </nav>
+      <a href="#" class="px-4 h-10 inline-flex items-center justify-center rounded-lg text-white bg-[var(--primary)] font-bold shadow-md hover:-translate-y-px transition">
+        Ingresar
+      </a>
+    </div>
+  </header>
+
+  <!-- HERO con gradiente, partículas, parallax y video -->
+  <section class="relative hero-bg text-white overflow-hidden">
+    <canvas id="particles"></canvas>
+    <div class="relative max-w-6xl mx-auto px-4 py-20 md:py-28 pad-route">
+      <div class="grid md:grid-cols-2 gap-10 items-center">
+        <div class="reveal">
+          <h2 class="display text-4xl md:text-6xl leading-tight">Optimiza tus <span class="text-[var(--accent)]">rutas</span> y operaciones</h2>
+          <p class="mt-4 text-white/85 text-lg md:text-xl max-w-2xl">Planifica, asigna y cierra servicios con visibilidad en cada recogida o entrega, cierres de caja y <b>notificaciones Web Push</b>.</p>
+          <div class="mt-8 flex flex-wrap gap-3">
+            <a href="#ruta" class="h-12 px-6 rounded-lg bg-white text-[var(--primary)] font-bold inline-flex items-center justify-center shadow-lg">Ver recorrido</a>
+            <button id="openVideo" data-yt="dQw4w9WgXcQ" class="relative h-12 px-6 rounded-lg border-2 border-white text-white font-bold inline-flex items-center justify-center gap-2 hover:bg-white/10 transition">
+              <span class="material-symbols-outlined">play_arrow</span> Ver video
+            </button>
+          </div>
+        </div>
+        <button id="openVideo2" data-yt="dQw4w9WgXcQ"
+          class="reveal relative w-full aspect-video rounded-xl floaty group bg-center bg-cover overflow-hidden"
+          style='background-image:url("https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp");' aria-label="Reproducir video">
+          <div class="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition"></div>
+          <div class="absolute inset-0 flex items-center justify-center">
+            <div class="relative flex items-center justify-center size-20 bg-white/25 rounded-full backdrop-blur-sm group-hover:bg-white/35 transition">
+              <span class="material-symbols-outlined text-white text-6xl pl-1">play_arrow</span>
+            </div>
+          </div>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURES con reveal y contadores -->
+  <section id="features" class="bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-20 pad-route">
+      <div class="grid md:grid-cols-4 gap-6">
+        <div class="rounded-2xl p-6 bg-[var(--muted)] floaty reveal">
+          <div class="size-12 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined">route</span>
+          </div>
+          <h4 class="display text-xl mb-1">Asignación manual</h4>
+          <p class="text-[var(--ink)]/80">Gestión directa de rutas por parte del gerente, con control total sobre cada servicio.</p>
+        </div>
+        <div class="rounded-2xl p-6 bg-[var(--muted)] floaty reveal">
+          <div class="size-12 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined">payments</span>
+          </div>
+          <h4 class="display text-xl mb-1">Cierres de caja</h4>
+          <p class="text-[var(--ink)]/80">Control de efectivo y flujo de caja con reportes detallados para una gestión precisa.</p>
+        </div>
+        <div class="rounded-2xl p-6 bg-[var(--muted)] floaty reveal">
+          <div class="size-12 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined">monitoring</span>
+          </div>
+          <h4 class="display text-xl mb-1">Tiempo real</h4>
+          <p class="text-[var(--ink)]/80">Seguimiento completo de cada servicio con registro de coordenadas en recibido y entrega.</p>
+        </div>
+        <div class="rounded-2xl p-6 bg-[var(--muted)] floaty reveal">
+          <div class="size-12 rounded-xl bg-[var(--primary)]/10 text-[var(--primary)] flex items-center justify-center mb-4">
+            <span class="material-symbols-outlined">notifications_active</span>
+          </div>
+          <h4 class="display text-xl mb-1">Web Push</h4>
+          <p class="text-[var(--ink)]/80">Notifica a clientes y conductores al instante.</p>
+        </div>
+      </div>
+
+      <!-- Contadores -->
+      <div class="grid sm:grid-cols-3 gap-6 mt-14 text-center">
+        <div class="reveal">
+          <div class="display text-4xl text-[var(--primary)]" data-counter="10500">0</div>
+          <p class="text-[var(--ink)]/70">Acarreos gestionados</p>
+        </div>
+        <div class="reveal">
+          <div class="display text-4xl text-[var(--primary)]" data-counter="320">0</div>
+          <p class="text-[var(--ink)]/70">Rutas activas/mes</p>
+        </div>
+        <div class="reveal">
+          <div class="display text-4xl text-[var(--primary)]" data-counter="15">0</div>
+          <p class="text-[var(--ink)]/70">% menos en combustible</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PASOS -->
+  <section id="pasos" class="bg-[var(--dark)] text-white">
+    <div class="max-w-6xl mx-auto px-4 py-20 pad-route">
+      <h3 class="display text-3xl md:text-4xl text-center mb-10 reveal">Cómo funciona</h3>
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="reveal floaty bg-white/5 rounded-2xl p-6">
+          <div class="size-8 rounded-full bg-white/20 flex items-center justify-center mb-3">1</div>
+          <h4 class="display text-xl mb-1">Planifica</h4>
+          <p class="text-white/80">Define rutas, conductores y parámetros clave.</p>
+        </div>
+        <div class="reveal floaty bg-white/5 rounded-2xl p-6">
+          <div class="size-8 rounded-full bg-white/20 flex items-center justify-center mb-3">2</div>
+          <h4 class="display text-xl mb-1">Asigna y monitorea</h4>
+          <p class="text-white/80">Supervisa el avance de las entregas y registra cada etapa del proceso.</p>
+        </div>
+        <div class="reveal floaty bg-white/5 rounded-2xl p-6">
+          <div class="size-8 rounded-full bg-white/20 flex items-center justify-center mb-3">3</div>
+          <h4 class="display text-xl mb-1">Cierra y optimiza</h4>
+          <p class="text-white/80">Controla caja, rutas y servicios con un cierre operativo completo y ordenado.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONFIANZA -->
+  <section id="confianza" class="bg-white">
+    <div class="max-w-6xl mx-auto px-4 py-20 pad-route text-center">
+      <h3 class="display text-3xl md:text-4xl mb-6 reveal">Con la confianza de equipos exigentes</h3>
+      <p class="text-[var(--ink)]/70 max-w-2xl mx-auto reveal">Logos placeholder/aliados aquí…</p>
+      <div class="mt-10">
+        <a href="#prueba" class="inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-[var(--primary)] text-white font-bold shadow-lg hover:-translate-y-px transition">Ingresar ahora <span class="material-symbols-outlined">arrow_forward</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRUEBA GRATUITA (ancla destino) -->
+  <section id="prueba" class="bg-white">
+    <div class="max-w-3xl mx-auto px-4 py-20 pad-route text-center">
+      <h3 class="display text-3xl mb-4">Solicita tu prueba gratuita</h3>
+      <p class="text-[var(--ink)]/70 mb-6">Déjanos tus datos y te activamos el acceso de evaluación.</p>
+      <a href="#" class="inline-flex items-center gap-2 h-12 px-6 rounded-lg bg-[var(--primary)] text-white font-bold shadow-lg">
+        Iniciar <span class="material-symbols-outlined">arrow_forward</span>
+      </a>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="bg-[#002B5B] text-white">
+    <div class="max-w-6xl mx-auto px-4 py-10 pad-route">
+      © 2025 AcarreApp — Términos · Privacidad · Contacto
+    </div>
+  </footer>
+
+  <!-- MODAL VIDEO -->
+  <div id="videoModal" class="fixed inset-0 z-[70] hidden" role="dialog" aria-modal="true">
+    <div class="absolute inset-0 bg-black/80"></div>
+    <div class="relative mx-auto w-[92%] max-w-5xl mt-16">
+      <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl">
+        <button id="closeVideo" class="absolute top-3 right-3 bg-white/90 hover:bg-white rounded-full p-2" aria-label="Cerrar video">
+          <span class="material-symbols-outlined text-[var(--ink)]">close</span>
+        </button>
+        <div class="w-full aspect-video">
+          <iframe id="ytFrame" class="w-full h-full" src="" title="Video de AcarreApp" frameborder="0"
+            allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contenedor de notificaciones -->
+  <div id="toasts" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- JS -->
+  <script>
+    // Parallax header brand
+    (function(){
+      const brand = document.querySelector('header .parallax');
+      window.addEventListener('mousemove', (e)=>{
+        const x = (e.clientX / innerWidth - .5) * 10;
+        const y = (e.clientY / innerHeight - .5) * 10;
+        brand?.style.setProperty('--tx', x + 'px');
+        brand?.style.setProperty('--ty', y + 'px');
+      }, {passive:true});
+    })();
+
+    // Canvas partículas (HiDPI + densidad adaptativa + movimiento diagonal)
+    (function(){
+      const c = document.getElementById('particles');
+      if(!c) return;
+      const ctx = c.getContext('2d');
+      const DPR = Math.max(1, window.devicePixelRatio || 1);
+
+      function size(){
+        const rect = c.parentElement.getBoundingClientRect();
+        c.style.width  = rect.width + 'px';
+        c.style.height = rect.height + 'px';
+        c.width  = Math.floor(rect.width  * DPR);
+        c.height = Math.floor(rect.height * DPR);
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0); // nítido en HiDPI
+      }
+
+      let stars = [];
+      function spawn(){
+        const area = (c.width/DPR) * (c.height/DPR);
+        const count = Math.max(60, Math.floor(area / 8000)); // densidad
+        stars = Array.from({length: count}, ()=>({
+          x: Math.random() * (c.width / DPR),
+          y: Math.random() * (c.height / DPR),
+          r: Math.random() * 1.8 + 0.6,
+          vx: -0.03 - Math.random() * 0.07, // izquierda
+          vy:  0.02 + Math.random() * 0.06, // abajo (diagonal)
+          a:  0.75 + Math.random() * 0.25   // brillo
+        }));
+      }
+
+      function draw(){
+        ctx.clearRect(0,0,c.width/DPR,c.height/DPR);
+        for(const s of stars){
+          s.x += s.vx; s.y += s.vy;
+          if (s.x < -5 || s.y > c.height/DPR + 5){
+            s.x = c.width/DPR + 5;
+            s.y = Math.random() * (c.height/DPR * 0.7);
+          }
+          ctx.globalAlpha = s.a;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI*2);
+          ctx.fillStyle = '#fff';
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(draw);
+      }
+
+      size(); spawn(); draw();
+      addEventListener('resize', ()=>{ size(); spawn(); }, {passive:true});
+    })();
+
+    // Reveal
+    (function(){
+      const obs = new IntersectionObserver((entries)=>{
+        entries.forEach(e=>{ if(e.isIntersecting){ e.target.classList.add('in'); obs.unobserve(e.target); }});
+      }, {threshold:.2});
+      document.querySelectorAll('.reveal').forEach(el=>obs.observe(el));
+    })();
+
+    // Barra progreso + CTA sticky
+    (function(){
+      const bar = document.getElementById('scrollbar'); const cta = document.getElementById('stickyCta');
+      const onScroll = ()=>{
+        const p = scrollY / (document.body.scrollHeight - innerHeight);
+        bar.style.width = (p*100)+'%';
+        if (p > 0.35) cta.classList.add('show'); else cta.classList.remove('show');
+      };
+      addEventListener('scroll', onScroll, {passive:true}); onScroll();
+    })();
+
+    // Modal YouTube
+    (function(){
+      const modal = document.getElementById('videoModal'); const frame = document.getElementById('ytFrame');
+      const openers = [document.getElementById('openVideo'), document.getElementById('openVideo2')].filter(Boolean);
+      const closeBtn = document.getElementById('closeVideo');
+      const build = id => `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0`;
+      function open(id){ frame.src = build(id || 'dQw4w9WgXcQ'); modal.classList.remove('hidden'); document.body.style.overflow='hidden'; closeBtn.focus(); }
+      function close(){ frame.src=''; modal.classList.add('hidden'); document.body.style.overflow=''; }
+      openers.forEach(b=>b.addEventListener('click', ()=>open(b.dataset.yt)));
+      closeBtn.addEventListener('click', close);
+      modal.addEventListener('click', (e)=>{ if(e.target===modal) close(); });
+      addEventListener('keydown', (e)=>{ if(e.key==='Escape' && !modal.classList.contains('hidden')) close(); });
+    })();
+
+    // Ruta vertical + camión siguiendo todo el scroll
+    (function(){
+      const path = document.getElementById('vroad');
+      const truck = document.getElementById('truck');
+      let total = 0;
+      function compute(){ total = path.getTotalLength(); }
+      function update(){
+        const p = Math.min(1, Math.max(0, scrollY / (document.body.scrollHeight - innerHeight)));
+        const len = total * p;
+        const pt = path.getPointAtLength(len);
+        const ahead = path.getPointAtLength(Math.min(total, len + 1));
+        const angle = Math.atan2(ahead.y - pt.y, ahead.x - pt.x) * 180/Math.PI;
+        truck.setAttribute('transform', `translate(${pt.x},${pt.y}) rotate(${angle})`);
+      }
+      compute(); update();
+      addEventListener('scroll', update, {passive:true});
+      addEventListener('resize', ()=>{ compute(); update(); });
+      setTimeout(()=>{ compute(); update(); }, 300);
+    })();
+
+    // Burbujas de notificación (en #toasts; arriba en móvil, abajo-dcha en desktop)
+    (function(){
+      const MESSAGES = [
+        'Nueva ruta creada',
+        'Ruta actualizada correctamente',
+        'Ruta cerrada con éxito',
+        'Cierre de ruta generado',
+        'Servicio #AC-104 asignado a Camión 07',
+        'Servicio #AC-104 entregado',
+        'Servicio #AC-104 cancelado',
+        'Servicio reprogramado para mañana',
+        'Nuevo servicio agregado a la ruta',
+        'Conductor inició la ruta',
+        'Conductor en camino al destino',
+        'Pago conciliado – Ruta Medellín',
+        'Cierre de caja completado',
+        'Combustible bajo — registrar recarga',
+        'Ruta optimizada — menor tiempo estimado'
+      ];
+
+      // Garantiza que exista el contenedor
+      let stack = document.getElementById('toasts');
+      if (!stack) {
+        stack = document.createElement('div');
+        stack.id = 'toasts';
+        stack.setAttribute('aria-live','polite');
+        stack.setAttribute('aria-atomic','true');
+        document.body.appendChild(stack);
+      }
+
+      function spawn(message){
+        const b = document.createElement('div');
+        b.className = 'bubble';
+        b.innerHTML = `<span class="material-symbols-outlined">notifications</span><span>${message}</span>`;
+        stack.appendChild(b);
+        requestAnimationFrame(()=> b.classList.add('show'));
+        setTimeout(()=> b.classList.add('hide'), 2600);
+        setTimeout(()=> b.remove(), 3100);
+      }
+
+      // Primera burbuja rápida para verificación visual
+      setTimeout(()=> spawn(MESSAGES[Math.floor(Math.random()*MESSAGES.length)]), 300);
+
+      const isMobile = matchMedia('(max-width: 768px)').matches;
+      const intervalMs = isMobile ? 5200 : 4200;
+      setInterval(()=> spawn(MESSAGES[Math.floor(Math.random()*MESSAGES.length)]), intervalMs);
+    })();
+
+    // Contadores animados
+    (function(){
+      const format = n => n.toLocaleString('es-CO');
+      function animate(el){
+        const goal = parseInt(el.getAttribute('data-counter')||'0',10);
+        const dur = 1400; const start = performance.now();
+        function step(t){
+          const p = Math.min(1, (t - start)/dur);
+          const val = Math.floor(goal * (0.1 + 0.9 * p*p*(3-2*p))); // ease
+          el.textContent = format(val);
+          if(p<1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+      const io = new IntersectionObserver((entries)=>{
+        entries.forEach(e=>{ if(e.isIntersecting){ animate(e.target); io.unobserve(e.target); }});
+      }, {threshold:.6});
+      document.querySelectorAll('[data-counter]').forEach(el=>io.observe(el));
+    })();
+  </script>
+</body>
+</html>

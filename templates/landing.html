@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html class="light" lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AcarreApp - Optimiza tus operaciones de transporte</title>
+  <meta name="description" content="AcarreApp: gestión de acarreos, rutas, cierres de caja y notificaciones Web Push." />
+  <meta name="theme-color" content="#007BFF" />
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+
+  <!-- Fuentes -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Poppins:wght@700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            primary: "#007BFF",
+            accent: "#FF7A00",
+            "dark-blue": "#002B5B",
+            "background-light": "#FFFFFF",
+            "background-dark": "#0A192F",
+            "neutral-grey": "#F4F4F4",
+          },
+          fontFamily: {
+            "display-heading": ["Poppins", "sans-serif"],
+            "display-body": ["Inter", "sans-serif"],
+          },
+          borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+          maxWidth: { wrapper: "88rem" },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { min-height: max(884px, 100dvh); }
+    .font-display-heading { font-family: 'Poppins', sans-serif; font-weight: 700; }
+    .font-display-body { font-family: 'Inter', sans-serif; }
+  </style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display-body text-[#002B5B] dark:text-neutral-grey">
+  <div class="relative w-full flex flex-col overflow-x-hidden">
+    <!-- Header -->
+    <header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-sm">
+      <div class="mx-auto w-full max-w-wrapper">
+        <div class="flex items-center p-4 justify-between">
+          <div class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-4xl">local_shipping</span>
+            <h2 class="text-[#002B5B] dark:text-white text-2xl font-display-heading leading-tight">AcarreApp</h2>
+          </div>
+
+          <!-- CTA Ingresar -->
+          <a href="/app/login" class="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-5 bg-primary text-white text-sm font-bold tracking-[0.015em]" aria-label="Ingresar a AcarreApp">
+            <span class="truncate">Ingresar</span>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Hero -->
+    <main class="relative">
+      <div class="absolute inset-0 bg-gradient-to-br from-blue-50 to-orange-50 dark:from-dark-blue dark:to-[#1a0f02] -z-10"></div>
+
+      <div class="mx-auto w-full max-w-wrapper relative">
+        <div class="@container">
+          <div class="flex flex-col gap-10 px-4 py-16 lg:py-24 @[864px]:flex-row @[864px]:items-center">
+            <div class="flex flex-col gap-6 text-center @[864px]:text-left @[864px]:w-1/2 @[864px]:pr-8">
+              <div class="flex flex-col gap-4">
+                <h1 class="text-[#002B5B] dark:text-white text-4xl md:text-5xl lg:text-6xl font-display-heading leading-tight tracking-tighter">
+                  Optimiza tus operaciones de transporte
+                </h1>
+                <h2 class="text-[#002B5B]/80 dark:text-neutral-grey/80 text-lg md:text-xl">
+                  La plataforma líder para gestionar rutas, servicios y cierres de caja con notificaciones Web Push.
+                </h2>
+              </div>
+
+              <div class="flex flex-col sm:flex-row gap-3 justify-center @[864px]:justify-start">
+                <a href="#video" class="flex items-center justify-center h-12 px-5 rounded-lg bg-primary text-white text-base font-bold tracking-[0.015em]">
+                  Probar AcarreApp
+                </a>
+                <a target="_blank" rel="noopener" href="https://wa.me/573186235929" class="flex items-center justify-center h-12 px-5 rounded-lg border-2 border-primary text-primary dark:text-white dark:border-white text-base font-bold tracking-[0.015em]">
+                  Hablar con ventas
+                </a>
+              </div>
+            </div>
+
+            <!-- Miniatura de video que abre modal -->
+            <div class="w-full @[864px]:w-1/2">
+              <button
+                id="openVideo"
+                class="relative w-full aspect-video rounded-xl shadow-2xl group cursor-pointer bg-center bg-cover"
+                style='background-image:url("https://i.ytimg.com/vi_webp/dQw4w9WgXcQ/maxresdefault.webp");'
+                aria-label="Reproducir video de AcarreApp"
+                data-yt="dQw4w9WgXcQ">
+                <div class="absolute inset-0 bg-black/30 rounded-xl"></div>
+                <div class="absolute inset-0 flex items-center justify-center">
+                  <div class="flex items-center justify-center size-20 bg-white/30 rounded-full backdrop-blur-sm group-hover:bg-white/50 transition-colors">
+                    <span class="material-symbols-outlined text-white text-6xl pl-1">play_arrow</span>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Beneficios -->
+    <section class="bg-neutral-grey dark:bg-background-dark/50">
+      <div class="mx-auto w-full max-w-wrapper">
+        <div class="flex flex-col gap-10 px-4 py-16 lg:py-24 @container">
+          <div class="flex flex-col gap-4 text-center">
+            <h2 class="text-[#002B5B] dark:text-white tracking-tight text-3xl md:text-4xl font-display-heading">
+              Beneficios clave de AcarreApp
+            </h2>
+            <p class="text-[#002B5B]/80 dark:text-neutral-grey/80 text-lg max-w-3xl mx-auto">
+              Eficiencia, control y visibilidad en toda tu operación.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <!-- Card -->
+            <div class="flex flex-1 gap-4 rounded-xl bg-background-light dark:bg-dark-blue p-6 flex-col text-center items-center">
+              <div class="flex items-center justify-center size-16 rounded-full bg-primary/10 text-primary">
+                <span class="text-4xl">🚚</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <h3 class="text-[#002B5B] dark:text-white text-xl font-display-heading">Asignación de rutas automática</h3>
+                <p class="text-[#002B5B]/80 dark:text-neutral-grey/80">Optimiza tus entregas con algoritmos inteligentes.</p>
+              </div>
+            </div>
+
+            <div class="flex flex-1 gap-4 rounded-xl bg-background-light dark:bg-dark-blue p-6 flex-col text-center items-center">
+              <div class="flex items-center justify-center size-16 rounded-full bg-primary/10 text-primary">
+                <span class="text-4xl">💰</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <h3 class="text-[#002B5B] dark:text-white text-xl font-display-heading">Cierres de caja inteligentes</h3>
+                <p class="text-[#002B5B]/80 dark:text-neutral-grey/80">Reportes y conciliaciones listos para operar.</p>
+              </div>
+            </div>
+
+            <div class="flex flex-1 gap-4 rounded-xl bg-background-light dark:bg-dark-blue p-6 flex-col text-center items-center">
+              <div class="flex items-center justify-center size-16 rounded-full bg-primary/10 text-primary">
+                <span class="text-4xl">📦</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <h3 class="text-[#002B5B] dark:text-white text-xl font-display-heading">Estados en tiempo real</h3>
+                <p class="text-[#002B5B]/80 dark:text-neutral-grey/80">Visibilidad total de cada servicio.</p>
+              </div>
+            </div>
+
+            <div class="flex flex-1 gap-4 rounded-xl bg-background-light dark:bg-dark-blue p-6 flex-col text-center items-center">
+              <div class="flex items-center justify-center size-16 rounded-full bg-primary/10 text-primary">
+                <span class="text-4xl">🔔</span>
+              </div>
+              <div class="flex flex-col gap-2">
+                <h3 class="text-[#002B5B] dark:text-white text-xl font-display-heading">Notificaciones Web Push</h3>
+                <p class="text-[#002B5B]/80 dark:text-neutral-grey/80">Comunicación instantánea con clientes y conductores.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA final -->
+    <section class="bg-gradient-to-r from-accent to-primary">
+      <div class="mx-auto w-full max-w-wrapper">
+        <div class="py-16 px-4 lg:py-24 text-center">
+          <h2 class="text-white tracking-tight text-3xl md:text-4xl lg:text-5xl font-display-heading max-w-4xl mx-auto">
+            ¿Listo para transformar tus operaciones?
+          </h2>
+          <p class="text-white/80 text-lg mt-4 mb-8">Únete a empresas que ya optimizan su logística con AcarreApp.</p>
+          <a href="/app/login" class="flex items-center justify-center h-14 px-8 rounded-lg bg-white text-primary text-lg font-bold mx-auto w-fit">
+            Ingresar a AcarreApp
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="bg-dark-blue text-white">
+      <div class="mx-auto w-full max-w-wrapper">
+        <div class="p-8 flex flex-col sm:flex-row justify-between items-center gap-6">
+          <p class="text-white/70 text-sm">© 2024 AcarreApp. Todos los derechos reservados.</p>
+          <div class="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
+            <a class="text-white/70 hover:text-white" href="#">Términos y Condiciones</a>
+            <a class="text-white/70 hover:text-white" href="#">Política de Privacidad</a>
+            <a class="text-white/70 hover:text-white" href="#">Contacto</a>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- MODAL VIDEO -->
+  <div id="videoModal" class="fixed inset-0 z-[100] hidden" role="dialog" aria-modal="true" aria-labelledby="videoTitle">
+    <div class="absolute inset-0 bg-black/80"></div>
+    <div class="relative mx-auto w-[92%] max-w-5xl mt-16">
+      <div class="relative bg-black rounded-xl overflow-hidden shadow-2xl">
+        <button id="closeVideo" class="absolute top-3 right-3 bg-white/90 hover:bg-white rounded-full p-2" aria-label="Cerrar video (Esc)">
+          <span class="material-symbols-outlined text-[#002B5B]">close</span>
+        </button>
+        <div class="w-full aspect-video">
+          <iframe id="ytFrame" class="w-full h-full" src="" title="Video de AcarreApp" frameborder="0"
+                  allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen></iframe>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS accesible para abrir/cerrar modal -->
+  <script>
+    (function () {
+      const open = document.getElementById("openVideo");
+      const modal = document.getElementById("videoModal");
+      const closeBtn = document.getElementById("closeVideo");
+      const frame = document.getElementById("ytFrame");
+
+      const buildUrl = (id) => `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0`;
+
+      function openModal() {
+        const id = open?.dataset?.yt || "dQw4w9WgXcQ"; // Reemplaza por tu ID real de YouTube
+        frame.src = buildUrl(id);
+        modal.classList.remove("hidden");
+        document.body.style.overflow = "hidden";
+        closeBtn.focus();
+      }
+
+      function closeModal() {
+        frame.src = ""; // Detiene el video
+        modal.classList.add("hidden");
+        document.body.style.overflow = "";
+        open.focus();
+      }
+
+      open?.addEventListener("click", openModal);
+      closeBtn?.addEventListener("click", closeModal);
+
+      modal?.addEventListener("click", (e) => {
+        if (e.target === modal) closeModal();
+      });
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !modal.classList.contains("hidden")) closeModal();
+      });
+    })();
+  </script>
+</body>
+</html>
