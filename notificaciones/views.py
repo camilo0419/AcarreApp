@@ -32,10 +32,6 @@ def subscribe(request):
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
 @login_required
-def debug(request):
-    return render(request, "notificaciones/debug.html")
-
-@login_required
 def test_push_me(request):
     send_webpush_to_user(
         request.user,

@@ -50,6 +50,7 @@
 .inline-actions{
   grid-column:3 / span 2;
   display:flex; gap:8px; justify-content:flex-start; align-items:center;
+  flex-wrap:wrap;
 }
 .btn-chip{
   display:inline-flex;align-items:center;gap:6px;
@@ -59,8 +60,9 @@
 .btn-chip:hover{background:#f3f4f6;}
 .btn-chip-success{border-color:#16a34a;color:#065f46;background:#ecfdf5;}
 .btn-chip-info{border-color:#2563eb;color:#1e3a8a;background:#eff6ff;}
+.btn-chip-danger{border-color:#dc2626;color:#7f1d1d;background:#fef2f2;}
 
-/* Estado (reemplaza la burbuja de #id) */
+/* Estado */
 .status-pill{
   font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;text-align:center;white-space:nowrap;
 }
@@ -75,21 +77,17 @@
 /* === Botonera en la columna "Acciones" (desktop) === */
 table.table td.actions .row-actions{
   display:flex !important;
-  flex-direction: column;        /* apilar */
-  align-items: flex-end;         /* alineado a la derecha */
-  gap: 8px !important;           /* 👈 aire entre botones */
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px !important;
 }
-
-/* Tamaño y estética uniforme para ambos botones */
 table.table td.actions .row-actions .btn{
-  padding: 6px 12px !important;  /* misma altura */
+  padding: 6px 12px !important;
   font-size: .92rem !important;
   line-height: 1.15 !important;
   border-radius: 12px !important;
-  min-width: 150px;              /* 👈 mismo ancho visual */
+  min-width: 150px;
 }
-
-
 </style>
 {% endblock %}
 
@@ -104,8 +102,12 @@ table.table td.actions .row-actions .btn{
     {% if ruta and ruta.pk %}
       <a class="btn btn-outline-dark" href="{% url 'rutas:hoja' ruta.pk %}">🧾 Hoja de ruta</a>
     {% endif %}
-    {% if es_gerente and ruta.estado == 'ACTIVA' %}
-      <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.pk }}">➕ Agregar servicio</a>
+
+    {# Django templates no soportan paréntesis en expresiones: se hace anidado #}
+    {% if ruta.estado == 'ACTIVA' %}
+      {% if es_gerente or es_conductor %}
+        <a class="btn btn-primary" href="{% url 'servicios:crear' %}?ruta={{ ruta.pk }}">➕ Agregar servicio</a>
+      {% endif %}
     {% endif %}
   </div>
 
@@ -146,9 +148,12 @@ table.table td.actions .row-actions .btn{
 
         <div class="sub">{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</div>
 
+        {# Acciones móviles: SOLO gerente (conductor no marca ni elimina) #}
         {% if ruta.estado == 'ACTIVA' %}
-          {% if es_gerente or es_conductor %}
+          {% if es_gerente %}
             <div class="inline-actions">
+              <a class="btn-chip btn-chip-danger" href="{% url 'servicios:eliminar' s.id %}" onclick="event.stopPropagation();">🗑️ Eliminar</a>
+
               {% if not s.recogido %}
                 <form id="mrec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
                   {% csrf_token %}
@@ -157,10 +162,11 @@ table.table td.actions .row-actions .btn{
                   <button type="button"
                           class="btn-chip btn-chip-info"
                           onclick="event.stopPropagation(); enviarConUbicacion('mrec-{{ s.id }}','mrec-lat-{{ s.id }}','mrec-lon-{{ s.id }}')">
-                    📦Marcar como - Recogido
+                    📦 Marcar como - Recogido
                   </button>
                 </form>
               {% endif %}
+
               {% if s.recogido and not s.entregado %}
                 <form id="ment-{{ s.id }}" method="post" action="{% url 'servicios:marcar_entregado' s.id %}">
                   {% csrf_token %}
@@ -183,7 +189,7 @@ table.table td.actions .row-actions .btn{
     {% endfor %}
   </div>
 
-  {# ===== Desktop/Tablet: TABLA (sin cambios) ===== #}
+  {# ===== Desktop/Tablet: TABLA ===== #}
   <div class="card only-desktop">
     <div class="table-responsive">
       <table class="table table-striped table-hover align-middle mb-0">
@@ -234,8 +240,14 @@ table.table td.actions .row-actions .btn{
             <td class="actions">
               <div class="row-actions">
                 <a class="btn btn-outline-primary btn-compact" href="{% url 'servicios:detail' s.id %}">Detalle</a>
+
+                {% if es_gerente %}
+                  <a class="btn btn-outline-danger btn-compact" href="{% url 'servicios:eliminar' s.id %}">Eliminar</a>
+                {% endif %}
+
+                {# Marcar: SOLO gerente #}
                 {% if ruta.estado == 'ACTIVA' %}
-                  {% if es_gerente or es_conductor %}
+                  {% if es_gerente %}
                     {% if not s.recogido %}
                       <form id="rec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
                         {% csrf_token %}
@@ -247,6 +259,7 @@ table.table td.actions .row-actions .btn{
                         </button>
                       </form>
                     {% endif %}
+
                     {% if s.recogido and not s.entregado %}
                       <form id="ent-{{ s.id }}" method="post" action="{% url 'servicios:marcar_entregado' s.id %}">
                         {% csrf_token %}
@@ -264,7 +277,11 @@ table.table td.actions .row-actions .btn{
             </td>
           </tr>
           {% empty %}
-            <tr><td colspan="{% if es_gerente and ruta.estado == 'ACTIVA' %}9{% else %}8{% endif %}" class="text-center text-muted py-4">Sin servicios en esta ruta.</td></tr>
+            <tr>
+              <td colspan="{% if es_gerente and ruta.estado == 'ACTIVA' %}9{% else %}8{% endif %}" class="text-center text-muted py-4">
+                Sin servicios en esta ruta.
+              </td>
+            </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -303,11 +320,9 @@ document.addEventListener('click', function(e){
 </script>
 
 {% if es_gerente and ruta.estado == 'ACTIVA' %}
-  <!-- CDN de SortableJS -->
   <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
   <script>
   (function(){
-    // CSRF para fetch
     function getCookie(name){
       let cookieValue = null;
       if (document.cookie && document.cookie !== '') {
@@ -347,7 +362,6 @@ document.addEventListener('click', function(e){
       return Array.from(container.querySelectorAll(selector)).map(el => parseInt(el.dataset.id));
     }
 
-    // ----- Desktop (tabla) -----
     const tbody = document.getElementById('tabla-servicios');
     if (tbody){
       Sortable.create(tbody, {
@@ -361,7 +375,6 @@ document.addEventListener('click', function(e){
       });
     }
 
-    // ----- Móvil (cards) -----
     const cards = document.getElementById('cards-servicios');
     if (cards){
       Sortable.create(cards, {

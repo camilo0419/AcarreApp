@@ -23,11 +23,11 @@ class GerenteRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
 # === Helpers multi-empresa ===
 def _empresa_serv(qs):
     emp = get_current_empresa()
-    return qs.filter(ruta__empresa=emp) if emp else qs
+    return qs.filter(ruta__empresa=emp) if emp else qs.none()
 
 def _empresa_ruta(qs):
     emp = get_current_empresa()
-    return qs.filter(empresa=emp) if emp else qs
+    return qs.filter(empresa=emp) if emp else qs.none()
 
 def _rutas_activas_qs():
     qs = _empresa_ruta(Ruta.objects.select_related("vehiculo", "conductor"))

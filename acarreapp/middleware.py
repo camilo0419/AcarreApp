@@ -26,7 +26,6 @@ class EmpresaActualMiddleware(MiddlewareMixin):
         empresa = None
         if slug:
             empresa = Empresa.objects.filter(slug=slug, activa=True).first()
-        if not empresa:
-            empresa = Empresa.objects.filter(activa=True).first()
-
+        # ✅ Seguridad: si no hay slug/empresa válida, NO hacer fallback a 'la primera activa'
+        # para evitar fuga de datos entre empresas.
         set_current_empresa(empresa)

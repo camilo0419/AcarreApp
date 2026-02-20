@@ -32,7 +32,7 @@ class GerenteRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
 def _empresa_serv_qs():
     emp = get_current_empresa()
     qs = Servicio.objects.select_related("ruta", "cliente", "ruta__conductor")
-    return qs.filter(ruta__empresa=emp) if emp else qs
+    return qs.filter(ruta__empresa=emp) if emp else qs.none()
 
 def _rutas_qs_base():
     qs = Ruta.objects.select_related("vehiculo", "conductor")

@@ -47,20 +47,46 @@ def _is_gerente(u):
     role = getattr(getattr(u, 'userprofile', None), 'rol', '')
     return u.is_superuser or u.is_staff or role == 'GERENTE'
 
+def _is_conductor(u):
+    role = getattr(getattr(u, 'userprofile', None), 'rol', '')
+    return role == 'CONDUCTOR' and not (u.is_staff or u.is_superuser)
+
+def _can_crear_servicio(u):
+    # Gerente/staff/superuser siempre pueden crear
+    if _is_gerente(u):
+        return True
+    # Conductor: solo podrá crear (la ruta se fija automáticamente a su ruta ACTIVA)
+    return _is_conductor(u)
+
 @login_required
-@user_passes_test(_is_gerente)
-@login_required
-@user_passes_test(_is_gerente)
+@user_passes_test(_can_crear_servicio)
 def crear_servicio(request):
     ruta_prefill = None
     initial = {}
+
+    user = request.user
+    es_conductor = _is_conductor(user)
+    es_gerente = _is_gerente(user)
+
+    # Conductor: la ruta SIEMPRE se fija a su ruta ACTIVA (no puede escoger otra)
+    if es_conductor and not es_gerente:
+        emp_ctx_tmp = get_current_empresa()
+        qs = Ruta.objects.select_related('conductor','vehiculo')
+        if emp_ctx_tmp:
+            qs = qs.filter(empresa=emp_ctx_tmp)
+        ruta_prefill = qs.filter(conductor=user, estado='ACTIVA').order_by('-id').first()
+        if not ruta_prefill:
+            messages.error(request, 'No tienes una ruta ACTIVA asignada. No puedes agregar servicios.')
+            return redirect('rutas:list')
+        initial['ruta'] = ruta_prefill.pk
+
 
     # Empresa actual (fallback si no hay ruta prefill)
     emp_ctx = get_current_empresa()
 
     # --- si viene ruta por GET, la cargamos y validamos empresa ---
     ruta_id = request.GET.get('ruta')
-    if ruta_id:
+    if ruta_id and not (es_conductor and not es_gerente):
         if emp_ctx:
             ruta_prefill = get_object_or_404(Ruta, pk=ruta_id, empresa=emp_ctx)
         else:
@@ -105,6 +131,9 @@ def crear_servicio(request):
 
             obj.save()
             messages.success(request, f"Servicio #{obj.id} creado correctamente.")
+            # Conductor: vuelve a su ruta activa para seguir agregando
+            if es_conductor and not es_gerente:
+                return redirect('servicios:por_ruta', ruta_id=obj.ruta_id)
             return redirect('servicios:detail', pk=obj.pk)
         else:
             messages.error(request, "Por favor revisa los campos del formulario.")
@@ -139,7 +168,8 @@ def pago_efectivo_conductor(request, pk):
         )
 
     user = request.user
-    role_ok = _is_gerente(user) or (servicio.ruta.conductor_id == user.id)
+    role_ok = _is_gerente(user)
+    # Solo GERENTE puede registrar pagos (conductor solo puede crear servicios)
     if not role_ok:
         return HttpResponseForbidden('No autorizado')
 
@@ -282,7 +312,7 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
         emp = get_current_empresa()
         qs = (Servicio.objects
               .select_related('ruta', 'ruta__conductor', 'ruta__empresa', 'cliente'))
-        return qs.filter(ruta__empresa=emp) if emp else qs
+        return qs.filter(ruta__empresa=emp) if emp else qs.none()
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
@@ -317,9 +347,9 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
 
         ctx.update({
             'es_gerente': es_gerente,
-            'puede_marcar_recogido': es_conductor and not s.recogido,
-            'puede_marcar_entregado': es_conductor and s.recogido and not s.entregado,
-            'puede_registrar_efectivo': es_conductor and (s.estado_pago != Servicio.PAGADO),
+            'puede_marcar_recogido': es_gerente and (not s.recogido),
+            'puede_marcar_entregado': es_gerente and s.recogido and (not s.entregado),
+            'puede_registrar_efectivo': es_gerente and (s.estado_pago != Servicio.PAGADO),
             'max_pago': s.saldo_cartera,
             'duracion': duracion,
             'distancia_km': distancia_km,
@@ -347,7 +377,8 @@ def marcar_recogido(request, pk):
 
     es_gerente = user.is_superuser or user.is_staff or getattr(getattr(user,'userprofile',None),'rol','')=='GERENTE'
     es_duenio  = (s.ruta.conductor_id == user.id)
-    if not (es_gerente or es_duenio):
+    # Solo GERENTE puede operar estados (conductor solo puede crear servicios)
+    if not es_gerente:
         return HttpResponseForbidden('No autorizado')
 
     if request.method == 'POST':
@@ -371,7 +402,8 @@ def marcar_entregado(request, pk):
 
     es_gerente = user.is_superuser or user.is_staff or getattr(getattr(user,'userprofile',None),'rol','')=='GERENTE'
     es_duenio  = (s.ruta.conductor_id == user.id)
-    if not (es_gerente or es_duenio):
+    # Solo GERENTE puede operar estados (conductor solo puede crear servicios)
+    if not es_gerente:
         return HttpResponseForbidden('No autorizado')
 
     if request.method == 'POST':

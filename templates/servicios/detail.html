@@ -79,6 +79,7 @@
       {% with rol=user.userprofile.rol|default_if_none:'' %}
         {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
           <a class="btn btn-primary" href="{% url 'servicios:editar' object.id %}">✏️ Editar</a>
+          <a class="btn btn-outline-danger" href="{% url 'servicios:eliminar' object.id %}">🗑️ Eliminar</a>
         {% endif %}
       {% endwith %}
     </div>
