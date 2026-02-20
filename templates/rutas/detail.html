@@ -11,12 +11,20 @@
   }
   .actions-inline form{ display:inline-block; margin:0; }
 
+  /* En móvil: botones más cómodos */
+  @media (max-width: 575.98px){
+    .actions-inline{ gap:10px; }
+    .actions-inline .btn{ width:100%; }
+    .actions-inline form{ width:100%; }
+    .actions-inline form .btn{ width:100%; }
+  }
+
   /* ===== KPIs con aire ===== */
   .kpis{
     display:grid;
     grid-template-columns: repeat(3,1fr);
-    gap:20px;             /* separación entre tarjetas */
-    margin-bottom:20px;   /* aire abajo del grupo */
+    gap:20px;
+    margin-bottom:20px;
   }
   .kpis > *{ min-width:0; }
   @media (max-width: 992px){
@@ -67,7 +75,7 @@
   .caja-ingreso .card-title{ color:#236a3b; }
   .caja-gasto  .card-title{ color:#8a1a1a; }
 
-  .caja-grid > *{ margin:0; } /* inputs limpios */
+  .caja-grid > *{ margin:0; }
 
   /* ===== Drag handle ===== */
   .drag-handle{
@@ -84,6 +92,34 @@
   /* feedback Sortable */
   .sortable-chosen{ opacity:.7; }
   .sortable-ghost{ opacity:.35; background:var(--bg-soft); }
+
+  /* ============================================================
+     ✅ FIX iPhone: tablas NO se cortan, permiten scroll horizontal
+     ============================================================ */
+
+  /* Asegurar scroll horizontal real en iOS */
+  .table-responsive{
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    display:block;
+  }
+
+  /* Evitar que algún padre recorte el scroll (muy común en iPhone) */
+  @media (max-width: 767.98px){
+    .card, .card-body{ overflow: visible !important; }
+  }
+
+  /* Anchos mínimos para forzar el scroll cuando se necesite */
+  .table-servicios{ min-width: 820px; }
+  .mov-table{ min-width: 560px; }
+
+  /* Pequeña mejora de legibilidad en móvil */
+  @media (max-width: 767.98px){
+    .table-servicios thead th,
+    .mov-table thead th{ white-space:nowrap; }
+  }
 </style>
 {% endblock %}
 
@@ -143,7 +179,7 @@
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
-          <table class="table table-striped table-hover align-middle mb-0">
+          <table class="table table-striped table-hover align-middle mb-0 table-servicios">
             <thead class="table-light">
               <tr>
                 {% if es_gerente and ruta.estado == "ACTIVA" %}
@@ -183,7 +219,10 @@
                 </td>
               </tr>
               {% empty %}
-              <tr><td {% if es_gerente and ruta.estado == "ACTIVA" %}colspan="7"{% else %}colspan="6"{% endif %} class="text-center text-muted py-4">Sin servicios.</td></tr>
+              <tr>
+                <td {% if es_gerente and ruta.estado == "ACTIVA" %}colspan="7"{% else %}colspan="6"{% endif %}
+                    class="text-center text-muted py-4">Sin servicios.</td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -383,7 +422,7 @@
         animation: 150,
         ghostClass: 'sortable-ghost',
         chosenClass: 'sortable-chosen',
-        delayOnTouchOnly: true,  // tap sostenido en móviles
+        delayOnTouchOnly: true,
         delay: 150,
         onEnd: async function(){
           const order = currentOrder();
