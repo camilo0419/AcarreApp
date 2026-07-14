@@ -93,12 +93,16 @@ class Servicio(models.Model):
         super().save(*args, **kwargs)
 
     @property
+    def total_pagado(self):
+        if self.pk:
+            pagos = self.pagos.filter(anulado=False)
+            if pagos.exists():
+                return int(pagos.aggregate(total=models.Sum("valor"))["total"] or 0)
+        return int(self.anticipo or 0)
+
+    @property
     def saldo_cartera(self):
-        if self.estado_pago == self.PAGADO:
-            return 0
-        if self.estado_pago == self.PENDIENTE:
-            return self.valor
-        return max(self.valor - self.anticipo, 0)
+        return max(int(self.valor or 0) - int(self.total_pagado or 0), 0)
 
     # helpers para marcar con fecha/ubicación
     def marcar_recogido(self, lat=None, lon=None):

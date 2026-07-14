@@ -28,6 +28,7 @@ pip-wheel-metadata/
 *.log
 .coverage
 htmlcov/
+tmp/
 *.zip
 
 staticfiles/

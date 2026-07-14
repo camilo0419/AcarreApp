@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Configuracion cartera{% endblock %}
+
+{% block content %}
+<div style="max-width:900px;margin:0 auto;">
+  <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+    <div>
+      <h1 class="m-0">Configuracion de cartera</h1>
+      <div class="text-muted">{{ empresa.nombre }}</div>
+    </div>
+    <a class="btn btn-outline" href="{% url 'cartera:dashboard' %}">Volver</a>
+  </div>
+
+  <form method="post" class="card card-body">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      {% for field in form %}
+        <div {% if field.name == "notas_estado_cuenta" or field.name == "notas_cuenta_cobro" %}style="grid-column:1 / -1;"{% endif %}>
+          {{ field.label_tag }}
+          {{ field }}
+          {{ field.errors }}
+          {% if field.name == "logo_static_path" %}
+            <div class="text-muted">Ruta relativa dentro de static, por ejemplo icons/Logo.png.</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px;">
+      <button class="btn btn-primary">Guardar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

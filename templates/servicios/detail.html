@@ -161,11 +161,11 @@
           <div class="col-6">
             <p><strong>Valor:</strong><br>{{ object.valor|money }}</p>
             {% if object.estado_pago == "PAG" %}
-              <p><strong>Total pagado:</strong><br>{{ object.valor|money }}</p>
+              <p><strong>Total pagado:</strong><br>{{ object.total_pagado|money }}</p>
             {% elif object.estado_pago == "ANT" %}
-              <p><strong>Anticipo:</strong><br>{{ object.anticipo|money }}</p>
+              <p><strong>Total pagado:</strong><br>{{ object.total_pagado|money }}</p>
             {% else %}
-              <p><strong>Anticipo:</strong><br>{{ object.anticipo|default:0|money }}</p>
+              <p><strong>Total pagado:</strong><br>{{ object.total_pagado|default:0|money }}</p>
             {% endif %}
           </div>
           <div class="col-6">
@@ -322,6 +322,61 @@
           </div>
         </div>
         {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagos -->
+  <div class="card my-3">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <span>Historial de pagos</span>
+      {% with rol=user.userprofile.rol|default_if_none:'' %}
+        {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
+          <span>
+            <a class="btn btn-sm btn-outline-secondary" href="{% url 'cartera:cuenta_cobro_pdf' object.id %}">Cuenta PDF</a>
+            {% if object.saldo_cartera > 0 %}
+              <a class="btn btn-sm btn-outline-success" href="{% url 'cartera:registrar_pago' object.id %}">Registrar pago</a>
+            {% endif %}
+          </span>
+        {% endif %}
+      {% endwith %}
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Fecha</th>
+              <th>Medio</th>
+              <th>Referencia</th>
+              <th>Caja</th>
+              <th class="text-end">Valor</th>
+              <th>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for pago in pagos_servicio %}
+              <tr>
+                <td>{{ pago.fecha_pago|date:"Y-m-d" }}</td>
+                <td>{{ pago.get_medio_pago_display }}</td>
+                <td>{{ pago.referencia|default:"-" }}</td>
+                <td>{% if pago.movimiento_caja_id %}#{{ pago.movimiento_caja_id }}{% else %}-{% endif %}</td>
+                <td class="text-end">{{ pago.valor|money }}</td>
+                <td>
+                  {% if pago.anulado %}
+                    <span class="badge text-bg-secondary">Anulado</span>
+                  {% elif pago.impacta_caja %}
+                    <span class="badge text-bg-success">Caja</span>
+                  {% else %}
+                    <span class="badge text-bg-info">Cartera</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="6" class="text-center text-muted py-3">Sin pagos registrados.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
     </div>
   </div>

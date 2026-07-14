@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Pagos de cartera{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+  <div>
+    <h1 class="m-0">Pagos</h1>
+    <div class="text-muted">Total activo filtrado: <strong>{{ total_pagos|money }}</strong></div>
+  </div>
+  <a class="btn btn-outline" href="{% url 'cartera:dashboard' %}">Volver</a>
+</div>
+
+<form class="card card-body" method="get" style="margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;align-items:end;">
+    <div><label for="q">Buscar</label><input id="q" class="input" name="q" value="{{ request.GET.q }}" placeholder="Cliente, referencia o servicio"></div>
+    <div><label for="estado">Estado</label><select id="estado" name="estado"><option value="">Todos</option><option value="activos" {% if request.GET.estado == "activos" %}selected{% endif %}>Activos</option><option value="anulados" {% if request.GET.estado == "anulados" %}selected{% endif %}>Anulados</option></select></div>
+    <div><label for="desde">Desde</label><input id="desde" class="input" type="date" name="desde" value="{{ request.GET.desde }}"></div>
+    <div><label for="hasta">Hasta</label><input id="hasta" class="input" type="date" name="hasta" value="{{ request.GET.hasta }}"></div>
+    <button class="btn btn-primary">Filtrar</button>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-header">Historial</div>
+  <div class="card-body p-0">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table class="table">
+        <thead>
+          <tr><th>Pago</th><th>Fecha</th><th>Cliente</th><th>Servicio</th><th>Medio</th><th>Caja</th><th class="text-end">Valor</th><th class="text-end">Accion</th></tr>
+        </thead>
+        <tbody>
+          {% for pago in pagos %}
+            <tr>
+              <td>#{{ pago.id }}</td>
+              <td>{{ pago.fecha_pago|date:"Y-m-d" }}</td>
+              <td>{{ pago.cliente.nombre }}</td>
+              <td><a href="{% url 'servicios:detail' pago.servicio_id %}">#{{ pago.servicio_id }}</a></td>
+              <td>{{ pago.get_medio_pago_display }}</td>
+              <td>{% if pago.impacta_caja %}Movimiento #{{ pago.movimiento_caja_id }}{% else %}Sin caja{% endif %}</td>
+              <td class="text-end">{{ pago.valor|money }}</td>
+              <td class="text-end">
+                {% if pago.anulado %}
+                  <span class="badge badge-pend">Anulado</span>
+                {% else %}
+                  <details>
+                    <summary class="btn btn-outline">Anular</summary>
+                    <form method="post" action="{% url 'cartera:anular_pago' pago.id %}" style="margin-top:8px;min-width:260px;">
+                      {% csrf_token %}
+                      <textarea class="input" name="motivo" rows="2" required placeholder="Motivo"></textarea>
+                      <button class="btn btn-primary w-100" style="margin-top:8px;">Confirmar</button>
+                    </form>
+                  </details>
+                {% endif %}
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8" class="text-center text-muted">Sin pagos.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

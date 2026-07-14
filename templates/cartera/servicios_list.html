@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Servicios en cartera{% endblock %}
+
+{% block content %}
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:14px;">
+  <div>
+    <h1 class="m-0">Servicios en cartera</h1>
+    <div class="text-muted">Saldo filtrado: <strong>{{ total_saldo|money }}</strong></div>
+  </div>
+  <a class="btn btn-outline" href="{% url 'cartera:dashboard' %}">Volver</a>
+</div>
+
+<form class="card card-body" method="get" style="margin-bottom:14px;">
+  <div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;align-items:end;">
+    <div style="grid-column:span 2;">
+      <label for="q">Buscar</label>
+      <input id="q" class="input" name="q" value="{{ request.GET.q }}" placeholder="Cliente, ruta o servicio">
+    </div>
+    <div>
+      <label for="cliente">Cliente</label>
+      <select id="cliente" name="cliente">
+        <option value="">Todos</option>
+        {% for c in filtros_clientes %}
+          <option value="{{ c.id }}" {% if request.GET.cliente == c.id|stringformat:"s" %}selected{% endif %}>{{ c.nombre }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="ruta_estado">Ruta</label>
+      <select id="ruta_estado" name="ruta_estado">
+        <option value="">Todas</option>
+        <option value="ACTIVA" {% if request.GET.ruta_estado == "ACTIVA" %}selected{% endif %}>Activa</option>
+        <option value="CERRADA" {% if request.GET.ruta_estado == "CERRADA" %}selected{% endif %}>Cerrada</option>
+      </select>
+    </div>
+    <div>
+      <label for="desde">Desde</label>
+      <input id="desde" class="input" type="date" name="desde" value="{{ request.GET.desde }}">
+    </div>
+    <div>
+      <button class="btn btn-primary w-100">Filtrar</button>
+    </div>
+  </div>
+</form>
+
+<div class="card">
+  <div class="card-header">Servicios pendientes</div>
+  <div class="card-body p-0">
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Servicio</th><th>Cliente</th><th>Ruta</th><th>Estado ruta</th><th class="text-end">Valor</th><th class="text-end">Pagado</th><th class="text-end">Saldo</th><th class="text-end">Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in servicios %}
+            <tr>
+              <td>#{{ s.id }}</td>
+              <td>{{ s.cliente.nombre }}</td>
+              <td>{{ s.ruta.nombre|default:s.ruta_id }}</td>
+              <td>{{ s.ruta.estado }}</td>
+              <td class="text-end">{{ s.valor|money }}</td>
+              <td class="text-end">{{ s.total_pagado|money }}</td>
+              <td class="text-end">{{ s.saldo_cartera|money }}</td>
+              <td class="text-end">
+                <a class="btn btn-outline" href="{% url 'servicios:detail' s.id %}">Detalle</a>
+                <a class="btn btn-primary" href="{% url 'cartera:registrar_pago' s.id %}">Pagar</a>
+              </td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="8" class="text-center text-muted">Sin servicios con saldo.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

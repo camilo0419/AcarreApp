@@ -3,6 +3,8 @@ import math
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.http import Http404, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.timesince import timesince
@@ -10,8 +12,10 @@ from django.views.decorators.http import require_POST
 from django.views.generic import DetailView, ListView
 
 from acarreapp.tenancy import get_current_empresa
+from cartera.models import PagoServicio
+from cartera.services import registrar_pago_servicio, sincronizar_estado_pago
 from empresa.models import Cliente
-from rutas.models import MovimientoCaja, Ruta
+from rutas.models import Ruta
 
 from .forms import ServicioComentarioForm, ServicioForm
 from .models import Servicio
@@ -148,12 +152,29 @@ def crear_servicio(request):
                 return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": ruta_prefill})
 
             obj.valor = obj.valor or 0
-            obj.anticipo = obj.anticipo or 0
+            pago_inicial = int(obj.anticipo or 0)
             if obj.estado_pago == Servicio.PAGADO:
-                obj.anticipo = obj.valor
+                pago_inicial = int(obj.valor or 0)
             elif obj.estado_pago == Servicio.PENDIENTE:
-                obj.anticipo = 0
-            obj.save()
+                pago_inicial = 0
+
+            try:
+                with transaction.atomic():
+                    obj.estado_pago = Servicio.PENDIENTE
+                    obj.anticipo = 0
+                    obj.save()
+                    if pago_inicial > 0:
+                        registrar_pago_servicio(
+                            obj.pk,
+                            empresa=emp,
+                            usuario=user,
+                            valor=pago_inicial,
+                            medio_pago=PagoServicio.MEDIO_EFECTIVO,
+                            observacion="Pago inicial registrado al crear el servicio.",
+                        )
+            except ValidationError as exc:
+                form.add_error("anticipo", exc.messages[0] if hasattr(exc, "messages") else str(exc))
+                return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": ruta_prefill})
             messages.success(request, f"Servicio #{obj.id} creado correctamente.")
             if es_conductor and not es_gerente:
                 return redirect("servicios:por_ruta", ruta_id=obj.ruta_id)
@@ -181,31 +202,23 @@ def pago_efectivo_conductor(request, pk):
     except ValueError:
         monto = 0
 
-    saldo = max((servicio.valor or 0) - (servicio.anticipo or 0), 0)
-    if monto <= 0:
-        messages.error(request, "Ingresa un valor positivo.")
-    elif saldo <= 0:
-        messages.info(request, "Este servicio ya esta pagado.")
-    else:
-        abono = min(monto, saldo)
-        servicio.anticipo += abono
-        servicio.estado_pago = Servicio.PAGADO if servicio.anticipo >= servicio.valor else Servicio.ANTICIPO
-        servicio.save(update_fields=["anticipo", "estado_pago"])
-
-        cliente_nombre = getattr(servicio.cliente, "nombre", "Cliente sin nombre")
-        trayecto = f" ({servicio.origen or '-'} -> {servicio.destino or '-'})" if (servicio.origen or servicio.destino) else ""
-        MovimientoCaja.objects.create(
+    try:
+        pago = registrar_pago_servicio(
+            servicio.pk,
             empresa=servicio.ruta.empresa,
-            ruta=servicio.ruta,
-            tipo="INGRESO",
-            concepto=f"Pago servicio - {cliente_nombre}{trayecto}",
-            valor=abono,
             usuario=request.user,
+            valor=monto,
+            medio_pago=PagoServicio.MEDIO_EFECTIVO,
+            observacion="Pago registrado desde el detalle del servicio.",
+            permitir_ruta_cerrada=False,
         )
-        if monto > saldo:
-            messages.warning(request, f"El valor superaba el saldo; se registraron ${abono:,}.")
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+    else:
+        if pago.movimiento_caja_id:
+            messages.success(request, f"Abono de ${pago.valor:,} registrado en caja.")
         else:
-            messages.success(request, f"Abono de ${abono:,} registrado en caja.")
+            messages.success(request, f"Abono de ${pago.valor:,} registrado.")
     return redirect("servicios:detail", pk=servicio.pk)
 
 
@@ -227,11 +240,16 @@ def editar_servicio(request, pk):
             if s.cliente and s.cliente.empresa_id != s.ruta.empresa_id:
                 form.add_error("cliente", "El cliente no pertenece a tu empresa.")
                 return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": obj.ruta})
-            if s.estado_pago == Servicio.PAGADO:
-                s.anticipo = s.valor
-            elif s.estado_pago == Servicio.PENDIENTE:
-                s.anticipo = 0
+            total_pagado = int(obj.total_pagado or 0)
+            if total_pagado > int(s.valor or 0):
+                form.add_error("valor", f"El valor no puede ser menor al total pagado (${total_pagado:,}).")
+                return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": obj.ruta})
+            s.anticipo = total_pagado
+            s.estado_pago = Servicio.PAGADO if total_pagado >= int(s.valor or 0) and int(s.valor or 0) > 0 else (
+                Servicio.ANTICIPO if total_pagado > 0 else Servicio.PENDIENTE
+            )
             s.save()
+            sincronizar_estado_pago(s, total_pagado)
             messages.success(request, f"Servicio #{s.id} actualizado correctamente.")
             return redirect("servicios:detail", pk=s.pk)
         messages.error(request, "Por favor corrige los errores del formulario.")
@@ -309,6 +327,9 @@ class ServicioDetailView(LoginRequiredMixin, DetailView):
                 "puede_marcar_entregado": puede_operar and s.recogido and not s.entregado,
                 "puede_registrar_efectivo": puede_operar and s.estado_pago != Servicio.PAGADO,
                 "max_pago": s.saldo_cartera,
+                "pagos_servicio": s.pagos.select_related(
+                    "registrado_por", "movimiento_caja", "movimiento_reversion"
+                ).order_by("-fecha_pago", "-creado_en"),
                 "duracion": duracion,
                 "distancia_km": distancia_km,
                 "directions_url": directions_url,
@@ -355,10 +376,24 @@ def marcar_pagado_gerente(request, pk):
     if servicio.ruta.estado != "ACTIVA":
         messages.error(request, "La ruta esta cerrada.")
         return redirect("servicios:detail", pk=servicio.pk)
-    servicio.estado_pago = Servicio.PAGADO
-    servicio.anticipo = servicio.valor
-    servicio.save(update_fields=["estado_pago", "anticipo"])
-    messages.success(request, f"Servicio #{servicio.id} marcado como pagado (sin afectar caja).")
+    saldo = servicio.saldo_cartera
+    if saldo <= 0:
+        messages.info(request, "Este servicio ya esta pagado.")
+        return redirect("servicios:detail", pk=servicio.pk)
+    try:
+        registrar_pago_servicio(
+            servicio.pk,
+            empresa=servicio.ruta.empresa,
+            usuario=request.user,
+            valor=saldo,
+            medio_pago=PagoServicio.MEDIO_AJUSTE,
+            observacion="Pago total registrado desde accion rapida de gerencia.",
+            permitir_ruta_cerrada=False,
+        )
+    except ValidationError as exc:
+        messages.error(request, exc.messages[0] if hasattr(exc, "messages") else str(exc))
+    else:
+        messages.success(request, f"Servicio #{servicio.id} registrado como pagado.")
     return redirect("servicios:detail", pk=servicio.pk)
 
 

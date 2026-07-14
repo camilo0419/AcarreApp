@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Registrar pago{% endblock %}
+
+{% block content %}
+<div style="max-width:860px;margin:0 auto;">
+  <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;margin-bottom:14px;">
+    <div>
+      <h1 class="m-0">Registrar pago</h1>
+      <div class="text-muted">Servicio #{{ servicio.id }} - {{ servicio.cliente.nombre }}</div>
+    </div>
+    <a class="btn btn-outline" href="{% url 'cartera:cliente_detalle' servicio.cliente_id %}">Volver</a>
+  </div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div class="card-header">Resumen</div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;">
+        <div><strong>Valor</strong><br>{{ servicio.valor|money }}</div>
+        <div><strong>Pagado</strong><br>{{ servicio.total_pagado|money }}</div>
+        <div><strong>Saldo</strong><br>{{ saldo|money }}</div>
+        <div><strong>Ruta</strong><br>{{ servicio.ruta.estado }}</div>
+      </div>
+      {% if servicio.ruta.estado == "CERRADA" %}
+        <div class="text-muted" style="margin-top:10px;">La ruta esta cerrada: el pago se registra en cartera y no modifica caja ni cierre.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <form method="post" class="card card-body">
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div>
+        {{ form.valor.label_tag }}
+        {{ form.valor }}
+        {{ form.valor.errors }}
+      </div>
+      <div>
+        {{ form.medio_pago.label_tag }}
+        {{ form.medio_pago }}
+        {{ form.medio_pago.errors }}
+      </div>
+      <div>
+        {{ form.fecha_pago.label_tag }}
+        {{ form.fecha_pago }}
+        {{ form.fecha_pago.errors }}
+      </div>
+      <div>
+        {{ form.referencia.label_tag }}
+        {{ form.referencia }}
+        {{ form.referencia.errors }}
+      </div>
+      <div style="grid-column:1 / -1;">
+        {{ form.observacion.label_tag }}
+        {{ form.observacion }}
+        {{ form.observacion.errors }}
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+      <a class="btn btn-outline" href="{% url 'cartera:cliente_detalle' servicio.cliente_id %}">Cancelar</a>
+      <button class="btn btn-primary">Registrar</button>
+    </div>
+  </form>
+</div>
+{% endblock %}

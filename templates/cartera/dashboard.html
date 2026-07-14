@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% load formatting %}
+{% block title %}Cartera{% endblock %}
+
+{% block extra_css %}
+<style>
+  .cartera-shell{max-width:1200px;margin:0 auto;}
+  .toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px;}
+  .actions{display:flex;gap:10px;flex-wrap:wrap;}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px;}
+  @media (max-width:980px){.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media (max-width:620px){.kpi-grid{grid-template-columns:1fr;}}
+  .kpi{background:#fff;border:1px solid var(--line-200);border-radius:8px;padding:14px 16px;box-shadow:var(--shadow-1);}
+  .kpi .label{font-size:.88rem;color:var(--ink-500);font-weight:700;}
+  .kpi .value{font-size:1.45rem;font-weight:800;margin-top:4px;color:var(--brand-800);}
+  .panel-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  @media (max-width:980px){.panel-grid{grid-template-columns:1fr;}}
+  .muted{color:var(--ink-500);}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .mini-bars{display:grid;gap:10px;}
+  .bar-row{display:grid;grid-template-columns:90px 1fr 130px;gap:10px;align-items:center;}
+  @media (max-width:640px){.bar-row{grid-template-columns:72px 1fr;}.bar-row strong{grid-column:1 / -1;}}
+  .bar{height:10px;background:#eef2ff;border-radius:999px;overflow:hidden;}
+  .bar span{display:block;height:100%;background:var(--accent-500);}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="cartera-shell">
+  <div class="toolbar">
+    <div>
+      <h1 class="m-0">Cartera</h1>
+      <div class="muted">{{ empresa.nombre }}</div>
+    </div>
+    <div class="actions">
+      <a class="btn btn-outline" href="{% url 'cartera:clientes_list' %}">Clientes</a>
+      <a class="btn btn-outline" href="{% url 'cartera:servicios_list' %}">Servicios</a>
+      <a class="btn btn-outline" href="{% url 'cartera:pagos_list' %}">Pagos</a>
+      <a class="btn btn-outline" href="{% url 'cartera:configuracion' %}">Configuracion</a>
+    </div>
+  </div>
+
+  <div class="kpi-grid">
+    <div class="kpi">
+      <div class="label">Cartera pendiente</div>
+      <div class="value">{{ total_cartera|money }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Pagado historico</div>
+      <div class="value">{{ total_pagado|money }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Pagos del mes</div>
+      <div class="value">{{ pagos_mes|money }}</div>
+    </div>
+    <div class="kpi">
+      <div class="label">Clientes con saldo</div>
+      <div class="value">{{ clientes_con_saldo }}</div>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <div class="card">
+      <div class="card-header">Top deudores</div>
+      <div class="card-body p-0">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th class="text-end">Saldo</th>
+                <th class="text-center">Servicios</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in top_clientes %}
+                <tr>
+                  <td>{{ row.cliente__nombre }}</td>
+                  <td class="text-end">{{ row.total|money }}</td>
+                  <td class="text-center">{{ row.servicios }}</td>
+                  <td class="text-end"><a class="btn btn-outline" href="{% url 'cartera:cliente_detalle' row.cliente__id %}">Ver</a></td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="text-center muted">Sin cartera pendiente.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Aging</div>
+      <div class="card-body">
+        {% with total=total_cartera %}
+          <div class="mini-bars">
+            <div class="bar-row">
+              <span>0-30</span>
+              <div class="bar"><span style="width:{% if total %}{% widthratio aging.b0_30 total 100 %}{% else %}0{% endif %}%;"></span></div>
+              <strong>{{ aging.b0_30|money }}</strong>
+            </div>
+            <div class="bar-row">
+              <span>31-60</span>
+              <div class="bar"><span style="width:{% if total %}{% widthratio aging.b31_60 total 100 %}{% else %}0{% endif %}%;"></span></div>
+              <strong>{{ aging.b31_60|money }}</strong>
+            </div>
+            <div class="bar-row">
+              <span>61-90</span>
+              <div class="bar"><span style="width:{% if total %}{% widthratio aging.b61_90 total 100 %}{% else %}0{% endif %}%;"></span></div>
+              <strong>{{ aging.b61_90|money }}</strong>
+            </div>
+            <div class="bar-row">
+              <span>90+</span>
+              <div class="bar"><span style="width:{% if total %}{% widthratio aging.b90_mas total 100 %}{% else %}0{% endif %}%;"></span></div>
+              <strong>{{ aging.b90_mas|money }}</strong>
+            </div>
+          </div>
+        {% endwith %}
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-grid" style="margin-top:14px;">
+    <div class="card">
+      <div class="card-header">Servicios con saldo</div>
+      <div class="card-body p-0">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Servicio</th><th>Cliente</th><th>Ruta</th><th class="text-end">Saldo</th><th></th></tr>
+            </thead>
+            <tbody>
+              {% for servicio in servicios_recientes %}
+                <tr>
+                  <td>#{{ servicio.id }}</td>
+                  <td>{{ servicio.cliente.nombre }}</td>
+                  <td>{{ servicio.ruta.nombre|default:servicio.ruta_id }}</td>
+                  <td class="text-end">{{ servicio.saldo_cartera|money }}</td>
+                  <td class="text-end"><a class="btn btn-outline" href="{% url 'cartera:registrar_pago' servicio.id %}">Pagar</a></td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="5" class="text-center muted">Sin saldos pendientes.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">Pagos recientes</div>
+      <div class="card-body p-0">
+        <div class="table-wrap">
+          <table class="table">
+            <thead>
+              <tr><th>Fecha</th><th>Cliente</th><th class="text-end">Valor</th><th>Estado</th></tr>
+            </thead>
+            <tbody>
+              {% for pago in pagos_recientes %}
+                <tr>
+                  <td>{{ pago.fecha_pago|date:"Y-m-d" }}</td>
+                  <td>{{ pago.cliente.nombre }}</td>
+                  <td class="text-end">{{ pago.valor|money }}</td>
+                  <td>{% if pago.anulado %}<span class="badge badge-pend">Anulado</span>{% elif pago.impacta_caja %}<span class="badge badge-pag">Caja</span>{% else %}<span class="badge badge-ant">Cartera</span>{% endif %}</td>
+                </tr>
+              {% empty %}
+                <tr><td colspan="4" class="text-center muted">Sin pagos registrados.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
