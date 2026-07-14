@@ -1,9 +1,10 @@
+from collections import defaultdict
 from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from django.db.models import Count, F, IntegerField, Q, Sum, Value
+from django.db.models import Count, Q, Sum
 from django.db.models.functions import Coalesce
 from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,13 +16,16 @@ from empresa.models import Cliente
 from servicios.models import Servicio
 
 from .forms import AnularPagoForm, CarteraEmpresaConfigForm, PagoServicioForm
-from .models import PagoServicio
+from .models import CuentaCobro, PagoServicio
 from .pdf import PDFDependencyError, render_pdf_response
 from .services import (
+    anotar_finanzas_servicios,
     anular_pago_servicio,
+    emitir_cuenta_cobro,
     obtener_config_cartera,
-    obtener_o_crear_cuenta_cobro,
+    obtener_cuenta_cobro,
     registrar_pago_servicio,
+    servicios_con_saldo,
 )
 
 
@@ -47,10 +51,6 @@ def _empresa_or_404():
     return empresa
 
 
-def _saldo_expr():
-    return F("valor") - Coalesce(F("anticipo"), Value(0), output_field=IntegerField())
-
-
 def _servicios_empresa_qs(empresa):
     return Servicio.objects.filter(ruta__empresa=empresa).select_related(
         "cliente",
@@ -61,14 +61,10 @@ def _servicios_empresa_qs(empresa):
 
 
 def _servicios_con_saldo_qs(empresa):
-    return (
-        _servicios_empresa_qs(empresa)
-        .exclude(estado_pago=Servicio.PAGADO)
-        .filter(valor__gt=F("anticipo"))
-    )
+    return servicios_con_saldo(_servicios_empresa_qs(empresa))
 
 
-def _filtrar_servicios(qs, params):
+def _filtrar_servicios_base(qs, params):
     cliente_id = params.get("cliente")
     if cliente_id and cliente_id.isdigit():
         qs = qs.filter(cliente_id=int(cliente_id))
@@ -76,10 +72,6 @@ def _filtrar_servicios(qs, params):
     conductor_id = params.get("conductor")
     if conductor_id and conductor_id.isdigit():
         qs = qs.filter(ruta__conductor_id=int(conductor_id))
-
-    estado = (params.get("estado") or "").strip()
-    if estado in {Servicio.PENDIENTE, Servicio.ANTICIPO, Servicio.PAGADO}:
-        qs = qs.filter(estado_pago=estado)
 
     ruta_estado = (params.get("ruta_estado") or "").strip()
     if ruta_estado in {"ACTIVA", "CERRADA"}:
@@ -137,49 +129,50 @@ def _aging(servicios):
     return buckets
 
 
+def _top_clientes(servicios):
+    rows = defaultdict(lambda: {"cliente__id": None, "cliente__nombre": "", "total": 0, "servicios": 0})
+    for servicio in servicios:
+        saldo = int(servicio.saldo_cartera or 0)
+        if saldo <= 0:
+            continue
+        row = rows[servicio.cliente_id]
+        row["cliente__id"] = servicio.cliente_id
+        row["cliente__nombre"] = servicio.cliente.nombre
+        row["total"] += saldo
+        row["servicios"] += 1
+    return sorted(rows.values(), key=lambda item: item["total"], reverse=True)
+
+
 @gerente_required
 def dashboard(request):
     empresa = _empresa_or_404()
-    servicios = _servicios_empresa_qs(empresa)
-    cartera = _servicios_con_saldo_qs(empresa)
-    saldo = _saldo_expr()
+    servicios = list(anotar_finanzas_servicios(_servicios_empresa_qs(empresa)))
+    cartera = [servicio for servicio in servicios if servicio.saldo_cartera > 0]
 
     hoy = timezone.localdate()
     primer_dia_mes = date(hoy.year, hoy.month, 1)
-    total_cartera = cartera.aggregate(total=Coalesce(Sum(saldo), 0))["total"] or 0
-    total_facturado = servicios.aggregate(total=Coalesce(Sum("valor"), 0))["total"] or 0
-    total_pagado = servicios.aggregate(total=Coalesce(Sum("anticipo"), 0))["total"] or 0
     pagos_mes = (
         PagoServicio.objects.filter(empresa=empresa, anulado=False, fecha_pago__gte=primer_dia_mes)
         .aggregate(total=Coalesce(Sum("valor"), 0))["total"]
         or 0
     )
 
-    top_clientes = (
-        cartera.values("cliente__id", "cliente__nombre")
-        .annotate(total=Coalesce(Sum(saldo), 0), servicios=Count("id"))
-        .filter(total__gt=0)
-        .order_by("-total")[:8]
-    )
-    servicios_recientes = cartera.order_by("-ruta__fecha_salida", "-id")[:10]
-    pagos_recientes = (
-        PagoServicio.objects.filter(empresa=empresa)
-        .select_related("cliente", "servicio", "registrado_por")
-        .order_by("-creado_en")[:8]
-    )
-
     contexto = {
         "empresa": empresa,
-        "total_cartera": int(total_cartera),
-        "total_facturado": int(total_facturado),
-        "total_pagado": int(total_pagado),
+        "total_cartera": sum(int(s.saldo_cartera or 0) for s in cartera),
+        "total_facturado": sum(int(s.valor or 0) for s in servicios),
+        "total_pagado": sum(int(s.total_pagado or 0) for s in servicios),
         "pagos_mes": int(pagos_mes),
-        "clientes_con_saldo": cartera.values("cliente_id").distinct().count(),
-        "servicios_con_saldo": cartera.count(),
-        "top_clientes": top_clientes,
-        "servicios_recientes": servicios_recientes,
-        "pagos_recientes": pagos_recientes,
-        "aging": _aging(list(cartera)),
+        "clientes_con_saldo": len({s.cliente_id for s in cartera}),
+        "servicios_con_saldo": len(cartera),
+        "top_clientes": _top_clientes(cartera)[:8],
+        "servicios_recientes": sorted(cartera, key=lambda s: (s.ruta.fecha_salida, s.id), reverse=True)[:10],
+        "pagos_recientes": (
+            PagoServicio.objects.filter(empresa=empresa)
+            .select_related("cliente", "servicio", "registrado_por")
+            .order_by("-creado_en")[:8]
+        ),
+        "aging": _aging(cartera),
     }
     return render(request, "cartera/dashboard.html", contexto)
 
@@ -187,22 +180,16 @@ def dashboard(request):
 @gerente_required
 def clientes_list(request):
     empresa = _empresa_or_404()
-    saldo = _saldo_expr()
-    cartera = _servicios_con_saldo_qs(empresa)
+    cartera_qs = _servicios_con_saldo_qs(empresa)
     q = (request.GET.get("q") or "").strip()
     if q:
-        cartera = cartera.filter(Q(cliente__nombre__icontains=q) | Q(cliente__contacto__icontains=q))
-
-    por_cliente = (
-        cartera.values("cliente__id", "cliente__nombre", "cliente__telefono", "cliente__contacto")
-        .annotate(total=Coalesce(Sum(saldo), 0), servicios=Count("id"))
-        .filter(total__gt=0)
-        .order_by("-total", "cliente__nombre")
-    )
+        cartera_qs = cartera_qs.filter(Q(cliente__nombre__icontains=q) | Q(cliente__contacto__icontains=q))
+    servicios = list(cartera_qs)
+    rows = _top_clientes(servicios)
     contexto = {
         "empresa": empresa,
-        "total_general": int(cartera.aggregate(total=Coalesce(Sum(saldo), 0))["total"] or 0),
-        "por_cliente": por_cliente,
+        "total_general": sum(int(s.saldo_cartera or 0) for s in servicios),
+        "por_cliente": rows,
         "q": q,
     }
     return render(request, "cartera/clientes_list.html", contexto)
@@ -227,11 +214,15 @@ def cliente_detalle(request, cliente_id: int):
         .select_related("servicio", "ruta", "registrado_por")
         .order_by("-fecha_pago", "-creado_en")
     )
+    cuentas_emitidas = set(
+        CuentaCobro.objects.filter(empresa=empresa, cliente=cliente).values_list("servicio_id", flat=True)
+    )
     contexto = {
         "empresa": empresa,
         "cliente": cliente,
         "servicios": servicios,
         "pagos": pagos,
+        "cuentas_emitidas": cuentas_emitidas,
         "total_cliente": sum(int(s.saldo_cartera or 0) for s in servicios),
     }
     return render(request, "cartera/cliente_detalle.html", contexto)
@@ -240,9 +231,11 @@ def cliente_detalle(request, cliente_id: int):
 @gerente_required
 def servicios_list(request):
     empresa = _empresa_or_404()
-    servicios = _filtrar_servicios(_servicios_con_saldo_qs(empresa), request.GET).order_by(
-        "-ruta__fecha_salida", "-id"
-    )
+    qs = _filtrar_servicios_base(_servicios_con_saldo_qs(empresa), request.GET).order_by("-ruta__fecha_salida", "-id")
+    servicios = list(qs)
+    estado = (request.GET.get("estado") or "").strip()
+    if estado in {Servicio.PENDIENTE, Servicio.PARCIAL, Servicio.PAGADO}:
+        servicios = [servicio for servicio in servicios if servicio.estado_pago == estado]
     contexto = {
         "empresa": empresa,
         "servicios": servicios,
@@ -255,7 +248,7 @@ def servicios_list(request):
 @gerente_required
 def registrar_pago(request, servicio_id: int):
     empresa = _empresa_or_404()
-    servicio = get_object_or_404(_servicios_empresa_qs(empresa), pk=servicio_id)
+    servicio = get_object_or_404(anotar_finanzas_servicios(_servicios_empresa_qs(empresa)), pk=servicio_id)
     saldo = int(servicio.saldo_cartera or 0)
 
     if request.method == "POST":
@@ -394,10 +387,22 @@ def estado_cuenta_pdf(request, cliente_id: int):
 
 
 @gerente_required
-def cuenta_cobro_pdf(request, servicio_id: int):
+@require_POST
+def emitir_cuenta_cobro_view(request, servicio_id: int):
     empresa = _empresa_or_404()
     servicio = get_object_or_404(_servicios_empresa_qs(empresa), pk=servicio_id)
-    cuenta = obtener_o_crear_cuenta_cobro(servicio, request.user)
+    cuenta = emitir_cuenta_cobro(servicio, request.user)
+    messages.success(request, f"Cuenta de cobro {cuenta.numero} emitida.")
+    return redirect("cartera:cuenta_cobro_pdf", servicio_id=servicio.id)
+
+
+@gerente_required
+def cuenta_cobro_pdf(request, servicio_id: int):
+    empresa = _empresa_or_404()
+    servicio = get_object_or_404(anotar_finanzas_servicios(_servicios_empresa_qs(empresa)), pk=servicio_id)
+    cuenta = obtener_cuenta_cobro(servicio)
+    if cuenta is None:
+        raise Http404("La cuenta de cobro no ha sido emitida.")
     pagos = servicio.pagos.filter(anulado=False).order_by("-fecha_pago", "-creado_en")
     config = obtener_config_cartera(empresa)
     contexto = {

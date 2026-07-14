@@ -24,7 +24,7 @@ class CierreCalculado:
 def calcular_cierre_ruta(ruta: Ruta, usuario=None) -> CierreCalculado:
     servicios = list(ruta.servicios.select_related("cliente"))
     total_servicios = len(servicios)
-    total_cobrado = sum(int(s.anticipo or 0) for s in servicios)
+    total_cobrado = sum(int(getattr(s, "total_pagado", 0) or 0) for s in servicios)
     total_pendiente = sum(int(getattr(s, "saldo_cartera", 0) or 0) for s in servicios)
 
     movs = MovimientoCaja.objects.filter(ruta=ruta)

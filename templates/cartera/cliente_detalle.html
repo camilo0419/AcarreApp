@@ -45,7 +45,10 @@
               <td class="text-end">
                 <a class="btn btn-outline" href="{% url 'servicios:detail' s.id %}">Detalle</a>
                 <a class="btn btn-primary" href="{% url 'cartera:registrar_pago' s.id %}">Pagar</a>
-                <a class="btn btn-outline" href="{% url 'cartera:cuenta_cobro_pdf' s.id %}">Cuenta PDF</a>
+                <form method="post" action="{% url 'cartera:emitir_cuenta_cobro' s.id %}" style="display:inline;">
+                  {% csrf_token %}
+                  <button class="btn btn-outline">Cuenta PDF</button>
+                </form>
               </td>
             </tr>
           {% empty %}

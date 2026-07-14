@@ -1,8 +1,8 @@
-from django.utils import timezone
-from django.db import models
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.conf import settings
+from django.db import models
+from django.utils import timezone
 
 
 def _coord(value, minimum, maximum):
@@ -18,93 +18,75 @@ def _coord(value, minimum, maximum):
 
 
 class Servicio(models.Model):
-    PENDIENTE = 'PEND'
-    ANTICIPO = 'ANT'
-    PAGADO = 'PAG'
-    ESTADOS = [(PENDIENTE,'Pendiente'), (ANTICIPO,'Recibir anticipo'), (PAGADO,'Pagado')]
+    PENDIENTE = "PEND"
+    PARCIAL = "ANT"
+    ANTICIPO = PARCIAL
+    PAGADO = "PAG"
+    ESTADOS = [(PENDIENTE, "Pendiente"), (PARCIAL, "Parcial"), (PAGADO, "Pagado")]
 
-    cliente = models.ForeignKey('empresa.Cliente', on_delete=models.PROTECT)
-    ruta = models.ForeignKey('rutas.Ruta', on_delete=models.CASCADE, related_name='servicios')
+    cliente = models.ForeignKey("empresa.Cliente", on_delete=models.PROTECT)
+    ruta = models.ForeignKey("rutas.Ruta", on_delete=models.CASCADE, related_name="servicios")
 
     valor = models.PositiveIntegerField(default=0)
-    estado_pago = models.CharField(max_length=4, choices=ESTADOS, default=PENDIENTE)
-    anticipo = models.PositiveIntegerField(default=0)
-
     origen = models.CharField(max_length=200, blank=True)
     destino = models.CharField(max_length=200, blank=True)
     notas = models.TextField(blank=True)
 
-    # Estado operativo
     recogido = models.BooleanField(default=False)
     entregado = models.BooleanField(default=False)
-
-    # 🔙 De vuelta: timestamps + geolocalización
     recogido_en = models.DateTimeField(null=True, blank=True)
     lat_recogida = models.FloatField(null=True, blank=True)
     lon_recogida = models.FloatField(null=True, blank=True)
-
     entregado_en = models.DateTimeField(null=True, blank=True)
     lat_entrega = models.FloatField(null=True, blank=True)
     lon_entrega = models.FloatField(null=True, blank=True)
 
-    # ➕ Orden dentro de la ruta (para drag & drop del gerente)
     orden = models.PositiveIntegerField(default=0, db_index=True)
-
     cantidad = models.PositiveIntegerField(
         default=1,
         validators=[MinValueValidator(1)],
-        help_text="Número de unidades asociadas al servicio (mínimo 1)."
+        help_text="Numero de unidades asociadas al servicio (minimo 1).",
     )
 
     class Meta:
-        # Mantenemos determinismo por orden dentro de la ruta y, como fallback, por id
-        ordering = ['ruta', 'orden', 'id']
+        ordering = ["ruta", "orden", "id"]
 
-    # --- validaciones pago ---
     def clean(self):
         if self.valor is None or self.valor < 0:
-            raise ValidationError({'valor': 'Debe ser 0 o un valor positivo.'})
-
-        if self.estado_pago == self.PENDIENTE and self.anticipo != 0:
-            raise ValidationError({'anticipo': 'Deja el anticipo en 0 cuando el estado es Pendiente.'})
-        if self.estado_pago == self.ANTICIPO:
-            if self.anticipo <= 0:
-                raise ValidationError({'anticipo': 'Ingresa un anticipo mayor a 0.'})
-            if self.anticipo > self.valor:
-                raise ValidationError({'anticipo': 'El anticipo no puede ser mayor al valor del servicio.'})
-        if self.estado_pago == self.PAGADO:
-            self.anticipo = self.valor
+            raise ValidationError({"valor": "Debe ser 0 o un valor positivo."})
 
     def save(self, *args, **kwargs):
-        # Regla de anticipo según estado
-        if self.estado_pago == self.PAGADO:
-            self.anticipo = self.valor
-        elif self.estado_pago == self.PENDIENTE:
-            self.anticipo = 0
-
-        # Autonumerar 'orden' al final de la ruta cuando venga vacío/0
         if self.ruta_id and (not self.orden or self.orden == 0):
-            # para no provocar query extra cuando ya existe y tiene orden
-            from servicios.models import Servicio as ServicioModel  # evitar import circular
-            qs = ServicioModel.objects.filter(ruta_id=self.ruta_id).exclude(pk=self.pk).order_by('-orden')
+            qs = Servicio.objects.filter(ruta_id=self.ruta_id).exclude(pk=self.pk).order_by("-orden")
             last = qs.first()
             self.orden = (last.orden + 1) if last and last.orden else 1
-
         super().save(*args, **kwargs)
 
     @property
     def total_pagado(self):
-        if self.pk:
-            pagos = self.pagos.filter(anulado=False)
-            if pagos.exists():
-                return int(pagos.aggregate(total=models.Sum("valor"))["total"] or 0)
-        return int(self.anticipo or 0)
+        if not self.pk:
+            return 0
+        from cartera.services import total_pagado_servicio
+
+        return total_pagado_servicio(self)
 
     @property
     def saldo_cartera(self):
         return max(int(self.valor or 0) - int(self.total_pagado or 0), 0)
 
-    # helpers para marcar con fecha/ubicación
+    @property
+    def estado_pago(self):
+        from cartera.services import estado_pago_para
+
+        return estado_pago_para(self.valor, self.total_pagado)
+
+    @property
+    def anticipo(self):
+        return self.total_pagado
+
+    def get_estado_pago_display(self):
+        return dict(self.ESTADOS).get(self.estado_pago, "Pendiente")
+
     def marcar_recogido(self, lat=None, lon=None):
         self.recogido = True
         if not self.recogido_en:
@@ -129,13 +111,13 @@ class Servicio(models.Model):
 
 
 class ServicioComentario(models.Model):
-    servicio = models.ForeignKey('Servicio', on_delete=models.CASCADE, related_name='comentarios')
+    servicio = models.ForeignKey("Servicio", on_delete=models.CASCADE, related_name="comentarios")
     autor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     texto = models.TextField()
     creado_en = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ['-creado_en']  # más reciente primero
+        ordering = ["-creado_en"]
 
     def __str__(self):
         return f"Coment #{self.pk} en Serv #{self.servicio_id}"

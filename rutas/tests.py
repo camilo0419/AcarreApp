@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from acarreapp.tenancy import set_current_empresa
+from cartera.models import PagoServicio
 from cartera.queries import cartera_resumen
 from empresa.models import Cliente, Empresa, Vehiculo
 from servicios.models import Servicio
@@ -55,8 +56,15 @@ class AcarreAppSecurityAndBusinessTests(TestCase):
             ruta=self.ruta_a,
             cliente=self.cliente_a,
             valor=1000,
-            estado_pago=Servicio.ANTICIPO,
-            anticipo=400,
+        )
+        PagoServicio.objects.create(
+            empresa=self.empresa_a,
+            servicio=self.servicio_a,
+            cliente=self.cliente_a,
+            ruta=self.ruta_a,
+            valor=400,
+            medio_pago=PagoServicio.MEDIO_ANTICIPO,
+            registrado_por=self.gerente_a,
         )
         self.servicio_b = Servicio.objects.create(
             ruta=self.ruta_b,
@@ -117,12 +125,12 @@ class AcarreAppSecurityAndBusinessTests(TestCase):
         self.assertIsNone(self.servicio_a.lat_recogida)
         self.assertIsNone(self.servicio_a.lon_recogida)
 
-    def test_cartera_includes_services_with_anticipo(self):
+    def test_cartera_includes_services_with_partial_payment(self):
         total, por_cliente = cartera_resumen(self.empresa_a)
         self.assertEqual(total, 600)
         self.assertEqual(list(por_cliente)[0]["total"], 600)
 
-    def test_cerrar_ruta_counts_anticipos_as_cobrado_and_saldo_as_pendiente(self):
+    def test_cerrar_ruta_counts_payments_as_cobrado_and_saldo_as_pendiente(self):
         Servicio.objects.create(ruta=self.ruta_a, cliente=self.cliente_a, valor=300)
         MovimientoCaja.objects.create(
             empresa=self.empresa_a,

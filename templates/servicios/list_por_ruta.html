@@ -229,7 +229,7 @@ table.table td.actions .row-actions .btn{
               {% if s.estado_pago == 'PAG' %}
                 <span class="badge text-bg-success">Pagado</span>
               {% elif s.estado_pago == 'ANT' %}
-                <span class="badge text-bg-warning">Anticipo {{ s.anticipo|money }}</span>
+                <span class="badge text-bg-warning">Parcial {{ s.total_pagado|money }}</span>
               {% else %}
                 <span class="badge text-bg-secondary">Pendiente</span>
               {% endif %}

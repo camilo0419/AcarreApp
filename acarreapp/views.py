@@ -11,6 +11,7 @@ from django.db.models.functions import Coalesce
 from django.db.models import Sum
 
 from acarreapp.tenancy import get_current_empresa
+from cartera.models import PagoServicio
 from servicios.models import Servicio
 from rutas.models import Ruta
 
@@ -58,11 +59,14 @@ class DashboardHomeView(GerenteRequiredMixin, TemplateView):
         hoy = localdate()
         primer_dia_mes = date(hoy.year, hoy.month, 1)
         serv = _empresa_serv(Servicio.objects.select_related("ruta"))
+        servicios_mes = serv.filter(ruta__fecha_salida__range=(primer_dia_mes, hoy))
 
-        facturado = serv.filter(ruta__fecha_salida__range=(primer_dia_mes, hoy)) \
-                        .aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
-        cobrado   = serv.filter(ruta__fecha_salida__range=(primer_dia_mes, hoy)) \
-                        .aggregate(t=Coalesce(Sum("anticipo"), 0))["t"] or 0
+        facturado = servicios_mes.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
+        cobrado = (
+            PagoServicio.objects.filter(servicio__in=servicios_mes, anulado=False)
+            .aggregate(t=Coalesce(Sum("valor"), 0))["t"]
+            or 0
+        )
         cartera = int(facturado) - int(cobrado)
 
         u = self.request.user

@@ -238,7 +238,7 @@ class RutaDetailView(DetailView):
         movs_list = list(movs)
 
         valor_total = sum(s.valor for s in servicios_list)
-        total_cobrado = sum(s.anticipo for s in servicios_list)
+        total_cobrado = sum(s.total_pagado for s in servicios_list)
         total_pendiente = sum(s.saldo_cartera for s in servicios_list)
         total_gastos = sum(m.valor for m in movs_list if m.tipo == "GASTO")
         total_ingresos = int(ruta.base_efectivo or 0) + sum(m.valor for m in movs_list if m.tipo == "INGRESO")
@@ -431,7 +431,7 @@ def exportar_cierre_csv(request, ruta_id: int):
     writer.writerow(["Gastos", cierre.total_gastos])
     writer.writerow(["Utilidad neta", cierre.utilidad_neta])
     writer.writerow([])
-    writer.writerow(["ID", "Cliente", "Origen", "Destino", "Valor", "Anticipo", "Saldo", "Estado pago"])
+    writer.writerow(["ID", "Cliente", "Origen", "Destino", "Valor", "Pagado", "Saldo", "Estado pago"])
     for servicio in servicios:
         writer.writerow(
             [
@@ -440,7 +440,7 @@ def exportar_cierre_csv(request, ruta_id: int):
                 _safe_export(servicio.origen),
                 _safe_export(servicio.destino),
                 servicio.valor,
-                servicio.anticipo,
+                servicio.total_pagado,
                 servicio.saldo_cartera,
                 _safe_export(servicio.get_estado_pago_display()),
             ]
@@ -522,7 +522,7 @@ def exportar_cierre_xlsx(request, ruta_id: int):
     _auto_fit(ws)
 
     ws2 = wb.create_sheet("Servicios")
-    headers = ["ID", "Cliente", "Origen", "Destino", "Valor", "Anticipo", "Saldo", "Estado", "Recogido", "Entregado"]
+    headers = ["ID", "Cliente", "Origen", "Destino", "Valor", "Pagado", "Saldo", "Estado", "Recogido", "Entregado"]
     ws2.append(headers)
     for idx, header in enumerate(headers, start=1):
         cell = ws2.cell(row=1, column=idx, value=header)
@@ -539,7 +539,7 @@ def exportar_cierre_xlsx(request, ruta_id: int):
                 _xls(servicio.origen or "-"),
                 _xls(servicio.destino or "-"),
                 _xls(servicio.valor or 0),
-                _xls(servicio.anticipo or 0),
+                _xls(servicio.total_pagado or 0),
                 _xls(servicio.saldo_cartera),
                 _xls(servicio.get_estado_pago_display()),
                 _xls(servicio.recogido_en),

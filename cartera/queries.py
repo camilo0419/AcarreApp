@@ -1,31 +1,26 @@
-from django.db.models import F, IntegerField, Sum, Value
-from django.db.models.functions import Coalesce
+from collections import defaultdict
 
 from servicios.models import Servicio
 
-
-def _saldo_expr():
-    return F("valor") - Coalesce(F("anticipo"), Value(0), output_field=IntegerField())
+from .services import servicios_con_saldo
 
 
 def _cartera_qs(empresa):
-    return Servicio.objects.filter(
-        ruta__empresa=empresa,
-        estado_pago__in=[Servicio.PENDIENTE, Servicio.ANTICIPO],
+    return servicios_con_saldo(
+        Servicio.objects.filter(ruta__empresa=empresa).select_related("ruta", "cliente")
     )
 
 
 def cartera_resumen(empresa):
-    qs = _cartera_qs(empresa)
-    saldo = _saldo_expr()
-    total = qs.aggregate(total=Coalesce(Sum(saldo), 0))["total"] or 0
-    por_cliente = (
-        qs.values("cliente__id", "cliente__nombre")
-        .annotate(total=Coalesce(Sum(saldo), 0))
-        .filter(total__gt=0)
-        .order_by("-total")
-    )
-    return total, por_cliente
+    servicios = list(_cartera_qs(empresa))
+    total = sum(int(servicio.saldo_cartera or 0) for servicio in servicios)
+    por_cliente = defaultdict(lambda: {"total": 0, "cliente__id": None, "cliente__nombre": ""})
+    for servicio in servicios:
+        row = por_cliente[servicio.cliente_id]
+        row["cliente__id"] = servicio.cliente_id
+        row["cliente__nombre"] = servicio.cliente.nombre
+        row["total"] += int(servicio.saldo_cartera or 0)
+    return total, sorted(por_cliente.values(), key=lambda item: item["total"], reverse=True)
 
 
 def cartera_por_cliente(empresa, cliente_id):

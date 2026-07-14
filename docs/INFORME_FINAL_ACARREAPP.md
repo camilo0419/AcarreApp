@@ -57,10 +57,10 @@ Clasificacion final: **APTA PARA PRUEBAS LOCALES**.
 | Archivo | Cambio | Motivo | Riesgo | Prueba |
 |---|---|---|---|---|
 | `rutas/views.py` | Reescritura ordenada de vistas, permisos, cierre/export | Evitar IDOR y GET modificador | Medio | `rutas.tests` |
-| `rutas/services.py` | Calculo canonico de cierre | Anticipos y saldos correctos | Medio | `test_cerrar_ruta...` |
+| `rutas/services.py` | Calculo canonico de cierre | Pagos activos y saldos correctos | Medio | `test_cerrar_ruta...` |
 | `servicios/views.py` | Endpoints POST, tenant fail closed, conductor asignado | Seguridad multiempresa/RBAC | Medio | `rutas.tests` |
 | `servicios/models.py` | Validacion tolerante de coordenadas | Evitar 500 por GPS invalido | Bajo | `test_conductor_can_mark...` |
-| `cartera/queries.py` | Cartera con servicios `PEND` y `ANT` | No ignorar anticipos | Bajo | `test_cartera...` |
+| `cartera/queries.py` | Cartera basada en saldo derivado de `PagoServicio` | No depender de campos financieros en `Servicio` | Bajo | `test_cartera...` |
 | `notificaciones/*` | Empresa en suscripcion, POST para test/delete, URL delete | Aislamiento y CSRF | Medio | `notificaciones.tests` |
 | `static/js/push.js`, `static/sw.js`, `acarreapp/views.py`, `acarreapp/urls.py` | SW en `/sw.js` con scope raiz | PWA/push movil | Bajo | `check`, collectstatic |
 | `dashboard/views.py` | APIs restringidas a gerente y empresa | IDOR dashboard | Bajo | `check` |
@@ -78,7 +78,7 @@ Clasificacion final: **APTA PARA PRUEBAS LOCALES**.
 | Servicios:mis | Roto | Existe | reverse test | OK |
 | IDOR gerente | Riesgo | 404 cross-company | test | OK |
 | IDOR conductor | Riesgo | 404 ruta ajena | test | OK |
-| Cierre | Ignoraba anticipos | Anticipos cuentan | test | OK |
+| Cierre | Ignoraba pagos parciales | Pagos activos cuentan | test | OK |
 | Export Excel | Podia cerrar implicitamente | No muta estado | test | OK |
 | Push | Faltaba delete URL; GET side-effect | POST + CSRF | test | OK |
 
@@ -103,9 +103,9 @@ Clasificacion final: **APTA PARA PRUEBAS LOCALES**.
 |---|---|
 | Rutas | Cierre usa transaccion y `select_for_update`; borrar/cerrar solo POST. |
 | Servicios | No se crean/editan servicios fuera de empresa; ruta cerrada bloquea cambios. |
-| Pagos | Pagos parciales suman a anticipo; sobrepago se recorta al saldo con aviso. |
-| Anticipos | Cartera y cierre usan saldo `valor - anticipo`. |
-| Cartera | Incluye `PEND` y `ANT`. |
+| Pagos | Pagos parciales se registran en `PagoServicio`; sobrepago se rechaza sin mutar estado. |
+| Anticipos | Anticipos historicos se migran a `PagoServicio` legacy; `Servicio` no conserva campo persistido. |
+| Cartera | Incluye servicios con saldo derivado de pagos activos. |
 | Caja | Pagos crean ingreso; gastos/ingresos solo positivos. |
 | Cierre | Persistido por POST; export/resumen no cierran. |
 | Reordenamiento | Valida empresa, gerente, ruta activa, IDs exactos y duplicados. |

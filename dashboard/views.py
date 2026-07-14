@@ -15,6 +15,8 @@ from django.views import View
 from django.views.generic import TemplateView
 
 from acarreapp.tenancy import get_current_empresa
+from cartera.models import PagoServicio
+from cartera.services import anotar_finanzas_servicios
 from servicios.models import Servicio
 from rutas.models import Ruta
 
@@ -33,6 +35,14 @@ def _empresa_serv_qs():
     emp = get_current_empresa()
     qs = Servicio.objects.select_related("ruta", "cliente", "ruta__conductor")
     return qs.filter(ruta__empresa=emp) if emp else qs.none()
+
+def _total_pagado_qs(servicios_qs):
+    return int(
+        PagoServicio.objects.filter(servicio__in=servicios_qs, anulado=False).aggregate(
+            total=Coalesce(Sum("valor"), 0)
+        )["total"]
+        or 0
+    )
 
 def _rutas_qs_base():
     qs = Ruta.objects.select_related("vehiculo", "conductor")
@@ -186,7 +196,7 @@ class DashboardHomeView(GerenteRequiredMixin, TemplateView):
 
         serie_mes = serv_empresa.filter(ruta__fecha_salida__range=(primer_dia_mes, hoy))
         fact = serie_mes.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
-        cob  = serie_mes.aggregate(t=Coalesce(Sum("anticipo"), 0))["t"] or 0
+        cob = _total_pagado_qs(serie_mes)
 
         servicios_activos = _servicios_no_entregados(serv_empresa).filter(
             ruta__in=_rutas_activas_qs()
@@ -242,7 +252,7 @@ class OperacionView(GerenteRequiredMixin, TemplateView):
 
         # --- KPIs básicos (solo SUM numéricas) ---
         facturado = base.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
-        cobrado   = base.aggregate(t=Coalesce(Sum("anticipo"), 0))["t"] or 0
+        cobrado = _total_pagado_qs(base)
         num_srv   = base.count()
         ticket_prom = int(round(facturado / num_srv, 0)) if num_srv else 0
         pct_cobrado = (cobrado / facturado * 100.0) if facturado else 0.0
@@ -284,9 +294,9 @@ class OperacionView(GerenteRequiredMixin, TemplateView):
         ).count()
 
         # --- Tabla compacta (últimos 50 del rango) ---
-        op_servicios = (base
+        op_servicios = (anotar_finanzas_servicios(base)
                         .order_by("-ruta__fecha_salida", "-id")
-                        .only("id", "valor", "estado_pago", "anticipo", "origen", "destino",
+                        .only("id", "valor", "origen", "destino",
                               "cliente__nombre", "ruta__fecha_salida", "ruta__conductor__username")[:50])
 
         # --- Selects de filtros para el template (listas siempre seguras) ---
@@ -359,98 +369,93 @@ class CarteraView(GerenteRequiredMixin, TemplateView):
 
         base = _empresa_serv_qs().filter(ruta__fecha_salida__range=(desde, hasta))
 
-        # ---------------- Cartera total (saldo no pagado) ----------------
-        # saldo = CASE estado_pago != 'PAG' THEN (valor - anticipo) ELSE 0
-        saldo_expr = Case(
-            When(estado_pago="PAG", then=Value(0)),
-            default=F("valor") - Coalesce(F("anticipo"), Value(0)),
-            output_field=IntegerField(),
-        )
+        cliente = self.request.GET.get("cliente")
+        if cliente and cliente.isdigit():
+            base = base.filter(cliente_id=int(cliente))
 
-        cartera_total = base.aggregate(t=Coalesce(Sum(saldo_expr), 0))["t"] or 0
+        vendedor = self.request.GET.get("vendedor")
+        if vendedor and vendedor.isdigit():
+            base = base.filter(ruta__conductor_id=int(vendedor))
 
-        # Clientes con saldo
-        por_cliente = (base
-                       .values("cliente__id", "cliente__nombre")
-                       .annotate(saldo=Coalesce(Sum(saldo_expr), 0),
-                                 max_dias=Coalesce(
-                                     # días desde fecha de la ruta
-                                     ExpressionWrapper(
-                                         Value(hoy) - F("ruta__fecha_salida"),
-                                         output_field=models.DurationField()
-                                     ),
-                                     Value(timedelta(0))
-                                 ))
-                       .order_by("-saldo"))
+        servicios = list(anotar_finanzas_servicios(base))
+        servicios_con_saldo = [
+            servicio for servicio in servicios
+            if int(getattr(servicio, "saldo_cartera", 0) or 0) > 0
+        ]
 
-        top_deudores = []
-        clientes_con_saldo = 0
-        for c in por_cliente:
-            s = int(c["saldo"] or 0)
-            if s > 0:
-                clientes_con_saldo += 1
-                # max_dias es duration total de la última fila del grupo; como hay agrupación,
-                # tomaremos días a partir de fecha más antigua si quieres, pero aquí ponemos "—" si no aplica
-                top_deudores.append({
-                    "nombre": c["cliente__nombre"] or "—",
-                    "saldo": s,
-                    "max_dias": None,  # si quieres precisión, debes calcular sobre subquery por cliente
-                })
-        top_deudores = top_deudores[:10]
-        top_deudor = top_deudores[0] if top_deudores else {"nombre": "—", "saldo": 0}
+        cartera_total = sum(int(servicio.saldo_cartera or 0) for servicio in servicios_con_saldo)
 
-        # ---------------- Aging buckets ----------------
-        # días = hoy - ruta__fecha_salida
-        dias_expr = ExpressionWrapper(
-            Value(hoy) - F("ruta__fecha_salida"),
-            output_field=models.DurationField()
-        )
+        top_por_cliente = defaultdict(lambda: {"nombre": "-", "saldo": 0, "max_dias": 0})
+        aging = [0, 0, 0, 0]
+        for servicio in servicios_con_saldo:
+            saldo = int(servicio.saldo_cartera or 0)
+            fecha = getattr(getattr(servicio, "ruta", None), "fecha_salida", None)
+            if hasattr(fecha, "date"):
+                fecha = fecha.date()
+            dias = max((hoy - fecha).days, 0) if fecha else 0
 
-        # Para agrupar por rangos, sacamos días como entero (aprox)
-        # Dividimos por 86400 para obtener días. Django no tiene extracción directa de days en DurationField
-        # así que hacemos buckets con comparaciones aproximadas usando timedelta.
-        b0_30 = base.filter(estado_pago__in=["PEND", "ANT"]).filter(ruta__fecha_salida__gte=hoy - timedelta(days=30)).aggregate(t=Coalesce(Sum(F("valor") - Coalesce(F("anticipo"), Value(0))), 0))["t"] or 0
-        b31_60 = base.filter(estado_pago__in=["PEND", "ANT"]).filter(
-            ruta__fecha_salida__lt=hoy - timedelta(days=30),
-            ruta__fecha_salida__gte=hoy - timedelta(days=60)
-        ).aggregate(t=Coalesce(Sum(F("valor") - Coalesce(F("anticipo"), Value(0))), 0))["t"] or 0
-        b61_90 = base.filter(estado_pago__in=["PEND", "ANT"]).filter(
-            ruta__fecha_salida__lt=hoy - timedelta(days=60),
-            ruta__fecha_salida__gte=hoy - timedelta(days=90)
-        ).aggregate(t=Coalesce(Sum(F("valor") - Coalesce(F("anticipo"), Value(0))), 0))["t"] or 0
-        b90p = base.filter(estado_pago__in=["PEND", "ANT"]).filter(
-            ruta__fecha_salida__lt=hoy - timedelta(days=90)
-        ).aggregate(t=Coalesce(Sum(F("valor") - Coalesce(F("anticipo"), Value(0))), 0))["t"] or 0
+            cliente_key = servicio.cliente_id or 0
+            cliente_bucket = top_por_cliente[cliente_key]
+            cliente_bucket["nombre"] = getattr(servicio.cliente, "nombre", None) or "-"
+            cliente_bucket["saldo"] += saldo
+            cliente_bucket["max_dias"] = max(cliente_bucket["max_dias"], dias)
 
-        aging = [int(b0_30), int(b31_60), int(b61_90), int(b90p)]
+            if dias <= 30:
+                aging[0] += saldo
+            elif dias <= 60:
+                aging[1] += saldo
+            elif dias <= 90:
+                aging[2] += saldo
+            else:
+                aging[3] += saldo
+
+        top_deudores = sorted(
+            top_por_cliente.values(),
+            key=lambda item: item["saldo"],
+            reverse=True,
+        )[:10]
+        clientes_con_saldo = len([item for item in top_por_cliente.values() if item["saldo"] > 0])
+        top_deudor = top_deudores[0] if top_deudores else {"nombre": "-", "saldo": 0, "max_dias": 0}
+
         total_aging = sum(aging) or 1
         aging_pct = [round(x * 100.0 / total_aging, 1) for x in aging]
 
-        # ---------------- Cobrado del MES + % ----------------
         first_month = date(hoy.year, hoy.month, 1)
         mes_qs = _empresa_serv_qs().filter(ruta__fecha_salida__range=(first_month, hoy))
-        cobrado_mes = mes_qs.aggregate(t=Coalesce(Sum("anticipo"), 0))["t"] or 0
-        fact_mes    = mes_qs.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
-        pct_mes     = (cobrado_mes / fact_mes * 100.0) if fact_mes else 0.0
+        if cliente and cliente.isdigit():
+            mes_qs = mes_qs.filter(cliente_id=int(cliente))
+        if vendedor and vendedor.isdigit():
+            mes_qs = mes_qs.filter(ruta__conductor_id=int(vendedor))
+        cobrado_mes = _total_pagado_qs(mes_qs)
+        fact_mes = mes_qs.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
+        pct_mes = (cobrado_mes / fact_mes * 100.0) if fact_mes else 0.0
 
-        # ---------------- DSO (aprox) ----------------
-        # DSO ≈ Cartera total / Ventas diarias promedio (últimos 90 días)
         ult90_from = hoy - timedelta(days=89)
         v90 = _empresa_serv_qs().filter(ruta__fecha_salida__range=(ult90_from, hoy))
+        if cliente and cliente.isdigit():
+            v90 = v90.filter(cliente_id=int(cliente))
+        if vendedor and vendedor.isdigit():
+            v90 = v90.filter(ruta__conductor_id=int(vendedor))
         fact_90 = v90.aggregate(t=Coalesce(Sum("valor"), 0))["t"] or 0
         avg_daily = (fact_90 / 90.0) if fact_90 else 0.0
-        dso = round(cartera_total / avg_daily, 1) if avg_daily > 0 else "—"
+        dso = round(cartera_total / avg_daily, 1) if avg_daily > 0 else "-"
 
-        # Selects de filtros (cliente + vendedor)
         filtros_clientes = (base
                             .values("cliente__id", "cliente__nombre")
                             .annotate(n=Count("id"))
                             .order_by("cliente__nombre"))
-        filtros_clientes = [{"id": i["cliente__id"], "nombre": i["cliente__nombre"] or "—"} for i in filtros_clientes if i["cliente__id"]]
+        filtros_clientes = [
+            {"id": i["cliente__id"], "nombre": i["cliente__nombre"] or "-"}
+            for i in filtros_clientes if i["cliente__id"]
+        ]
         filtros_vendedores = (base
                               .values("ruta__conductor__id", "ruta__conductor__username")
-                              .annotate(n=Count("id")).order_by("ruta__conductor__username"))
-        filtros_vendedores = [{"id": i["ruta__conductor__id"], "username": i["ruta__conductor__username"] or "—"} for i in filtros_vendedores if i["ruta__conductor__id"]]
+                              .annotate(n=Count("id"))
+                              .order_by("ruta__conductor__username"))
+        filtros_vendedores = [
+            {"id": i["ruta__conductor__id"], "username": i["ruta__conductor__username"] or "-"}
+            for i in filtros_vendedores if i["ruta__conductor__id"]
+        ]
 
         ctx.update({
             "cx_total": int(cartera_total),
@@ -460,15 +465,15 @@ class CarteraView(GerenteRequiredMixin, TemplateView):
             "cx_dso": dso,
             "cx_top_deudor": top_deudor,
             "cx_top_deudores": top_deudores,
-
             "cx_aging": aging,
             "cx_aging_pct": aging_pct,
-
             "filtros_clientes": filtros_clientes,
             "filtros_vendedores": filtros_vendedores,
+            "desde": desde,
+            "hasta": hasta,
+            "rango": self.request.GET.get("rango") or "mes",
         })
         return ctx
-
 
 # -------- APIs ----------
 class RutasActivasLiteAPI(GerenteRequiredMixin, View):

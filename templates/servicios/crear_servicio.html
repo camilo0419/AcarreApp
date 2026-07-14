@@ -3,42 +3,19 @@
 
 {% block extra_css %}
 <style>
-  .form-shell{max-width: 980px; margin-inline:auto;}
-  .grid-2{display:grid; gap:14px;}
-  @media (min-width: 900px){ .grid-2{grid-template-columns: 1fr 1fr;} }
-
-  /* Tarjetas de estado de pago */
-  .pay-cards{ display:flex; gap:10px; flex-wrap:wrap; }
-  .pay-card{
-    flex:1 1 180px; min-width:180px;
-    border:1px solid var(--line-200);
-    border-radius: var(--radius-md);
-    padding:12px 14px;
-    background:#fff;
-    cursor:pointer;
-    box-shadow: var(--shadow-1);
-    transition: transform .06s ease, box-shadow .06s ease, border-color .06s ease;
-  }
-  .pay-card:hover{ transform: translateY(-1px); box-shadow: var(--shadow-2); }
-  .pay-card.active{ border-color: var(--pri-500); box-shadow: 0 0 0 3px rgba(47,62,140,.15); }
-  .pay-title{ font-weight:600; }
-  .pay-desc{ color:var(--muted); font-size:.9rem; margin-top:4px; }
-
-  /* Espacio extra bajo las tarjetas para despegar de los botones */
-  .pay-group{ margin-bottom: 18px; }
-
-  /* Botones del mismo tamaño */
-  .actions{ display:flex; gap:12px; flex-wrap:wrap; }
-  .actions .btn{ min-width: 150px; }
-
-  /* Botón Maps pequeño junto al input */
-  .map-row{ display:flex; gap:8px; align-items:center; }
-  .map-row .map-btn{ white-space:nowrap; }
+  .form-shell{max-width:980px;margin-inline:auto;}
+  .grid-2{display:grid;gap:14px;}
+  @media (min-width:900px){.grid-2{grid-template-columns:1fr 1fr;}}
+  .actions{display:flex;gap:12px;flex-wrap:wrap;}
+  .actions .btn{min-width:150px;}
+  .map-row{display:flex;gap:8px;align-items:center;}
+  .map-row .map-btn{white-space:nowrap;}
+  .pay-box{border:1px solid var(--line-200);border-radius:8px;padding:12px;background:#fff;}
 </style>
 {% endblock %}
 
 {% block content %}
-<h1 class="mb-3">Crear servicio</h1>
+<h1 class="mb-3">{% if form.instance.pk %}Editar servicio{% else %}Crear servicio{% endif %}</h1>
 
 <form method="post" class="card card-body form-shell">
   {% csrf_token %}
@@ -46,26 +23,21 @@
     <div class="alert alert-danger mb-3">{{ form.non_field_errors }}</div>
   {% endif %}
 
-  {# Info de ruta fijada arriba (se mantiene), pero abajo ya no mostramos el select #}
   {% if ruta_prefill %}
-    <div class="card" style="border-left:6px solid var(--pri-500); margin-bottom:12px;">
+    <div class="card" style="border-left:6px solid var(--brand-800); margin-bottom:12px;">
       <div class="card-body">
         <strong>Ruta:</strong> {{ ruta_prefill.nombre|default:"(sin nombre)" }}
-        &nbsp;—&nbsp; <strong>Fecha:</strong> {{ ruta_prefill.fecha_salida|date:"Y-m-d" }}
-        &nbsp;—&nbsp; <strong>Conductor:</strong> {% firstof ruta_prefill.conductor.get_full_name ruta_prefill.conductor.username "—" %}
+        &nbsp;-&nbsp; <strong>Fecha:</strong> {{ ruta_prefill.fecha_salida|date:"Y-m-d" }}
+        &nbsp;-&nbsp; <strong>Conductor:</strong> {% firstof ruta_prefill.conductor.get_full_name ruta_prefill.conductor.username "-" %}
       </div>
     </div>
   {% endif %}
 
   <div class="grid-2">
     <div>
-      {# Si hay ruta prefijada, enviamos hidden; si no, mostramos el select normal #}
       <div class="mb-3">
         {% if ruta_prefill %}
-          <input type="hidden"
-                 name="{{ form.ruta.html_name }}"
-                 id="{{ form.ruta.id_for_label }}"
-                 value="{{ ruta_prefill.pk }}">
+          <input type="hidden" name="{{ form.ruta.html_name }}" id="{{ form.ruta.id_for_label }}" value="{{ ruta_prefill.pk }}">
         {% else %}
           {{ form.ruta.label_tag }} {{ form.ruta }} {{ form.ruta.errors }}
         {% endif %}
@@ -75,45 +47,24 @@
         {{ form.cliente.label_tag }} {{ form.cliente }} {{ form.cliente.errors }}
       </div>
 
-      {# ✅ FECHA (mini calendario) #}
-      <div class="mb-3">
-        {{ form.fecha.label_tag }} {{ form.fecha }} {{ form.fecha.errors }}
-      </div>
-
       <div class="mb-3">
         {{ form.valor.label_tag }} {{ form.valor }} {{ form.valor.errors }}
       </div>
 
-      {# 👇 NUEVO: Cantidad #}
       <div class="mb-3">
         {{ form.cantidad.label_tag }} {{ form.cantidad }} {{ form.cantidad.errors }}
-        <div class="form-text">Unidades (mínimo 1).</div>
+        <div class="form-text">Unidades (minimo 1).</div>
       </div>
 
-      {# ---- ESTADO DE PAGO COMO TARJETAS ---- #}
-      <div class="pay-group">
-        <label class="form-label">Estado de pago</label>
-        {{ form.estado_pago.as_hidden }}  {# mantenemos el campo real, oculto #}
-
-        <div class="pay-cards" id="payCards">
-          <div class="pay-card" data-value="PEND">
-            <div class="pay-title">Pendiente</div>
-            <div class="pay-desc">Todo a cartera.</div>
-          </div>
-          <div class="pay-card" data-value="ANT">
-            <div class="pay-title">Recibir anticipo</div>
-            <div class="pay-desc">Parte recibido, resto a cartera.</div>
-          </div>
-          <div class="pay-card" data-value="PAG">
-            <div class="pay-title">Pagado</div>
-            <div class="pay-desc">Sin cartera.</div>
-          </div>
+      <div class="pay-box">
+        <h3 class="m-0">Pago inicial</h3>
+        <div class="text-muted" style="margin-bottom:10px;">Se registra como PagoServicio, no como campo del servicio.</div>
+        <div class="mb-3">
+          {{ form.pago_inicial.label_tag }} {{ form.pago_inicial }} {{ form.pago_inicial.errors }}
         </div>
-      </div>
-
-      <div class="mb-3" id="grp-anticipo">
-        {{ form.anticipo.label_tag }} {{ form.anticipo }} {{ form.anticipo.errors }}
-        <div class="form-text">Valor recibido ahora (no puede superar el total).</div>
+        <div>
+          {{ form.medio_pago_inicial.label_tag }} {{ form.medio_pago_inicial }} {{ form.medio_pago_inicial.errors }}
+        </div>
       </div>
     </div>
 
@@ -149,74 +100,26 @@
 </form>
 
 <script>
-  // ----- Estado de pago (tarjetas) -----
-  const selectEstado = document.getElementById('id_estado_pago');
-  const cardsWrap = document.getElementById('payCards');
-  const grpAnticipo = document.getElementById('grp-anticipo');
-  const inputAnticipo = document.getElementById('id_anticipo');
-  const inputValor = document.getElementById('id_valor');
-
-  // Si no hay valor inicial, por defecto 'PEND'
-  if (selectEstado && !selectEstado.value) {
-    selectEstado.value = 'PEND';
-  }
-
-  function setActiveCard(val){
-    if (!cardsWrap) return;
-    cardsWrap.querySelectorAll('.pay-card').forEach(c=>{
-      c.classList.toggle('active', c.dataset.value === val);
-    });
-  }
-
-  function toggleAnticipo(){
-    const val = selectEstado ? selectEstado.value : '';
-    if (val === 'ANT'){
-      grpAnticipo && (grpAnticipo.style.display = '');
-    } else {
-      if (grpAnticipo) grpAnticipo.style.display = 'none';
-      if (inputAnticipo){
-        if (val === 'PAG' && inputValor) inputAnticipo.value = inputValor.value || 0;
-        else inputAnticipo.value = 0;
-      }
-    }
-    setActiveCard(val);
-  }
-
-  // Fuerza estado visual inicial
-  toggleAnticipo();
-
-  if (selectEstado){
-    selectEstado.addEventListener('change', toggleAnticipo);
-  }
-
-  if (cardsWrap){
-    cardsWrap.addEventListener('click', (e)=>{
-      const card = e.target.closest('.pay-card');
-      if (!card || !selectEstado) return;
-      selectEstado.value = card.dataset.value;
-      toggleAnticipo();
-    });
-  }
-
-  // ----- Botones "Abrir en Maps" -----
   function mapsUrl(q){ return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(q || ''); }
-  const inOrigen  = document.getElementById('id_origen');
+  const inOrigen = document.getElementById('id_origen');
   const inDestino = document.getElementById('id_destino');
   const btnOrigen = document.getElementById('btnOrigen');
-  const btnDestino= document.getElementById('btnDestino');
+  const btnDestino = document.getElementById('btnDestino');
 
   function bindMap(input, btn){
+    if (!input || !btn) return;
     function upd(){ btn.href = mapsUrl(input.value || ''); btn.classList.toggle('disabled', !input.value); }
     upd();
     input.addEventListener('input', upd);
   }
-  if (inOrigen && btnOrigen) bindMap(inOrigen, btnOrigen);
-  if (inDestino && btnDestino) bindMap(inDestino, btnDestino);
+  bindMap(inOrigen, btnOrigen);
+  bindMap(inDestino, btnDestino);
 
-  // ---- Normaliza vacíos a 0 al enviar ----
   document.querySelector('form').addEventListener('submit', () => {
+    const inputValor = document.getElementById('id_valor');
+    const inputPago = document.getElementById('id_pago_inicial');
     if (inputValor && (inputValor.value === '' || inputValor.value == null)) inputValor.value = 0;
-    if (inputAnticipo && (inputAnticipo.value === '' || inputAnticipo.value == null)) inputAnticipo.value = 0;
+    if (inputPago && (inputPago.value === '' || inputPago.value == null)) inputPago.value = 0;
   });
 </script>
 {% endblock %}

@@ -11,6 +11,7 @@ urlpatterns = [
     path("clientes/<int:cliente_id>/estado-cuenta.pdf", views.estado_cuenta_pdf, name="estado_cuenta_pdf"),
     path("servicios/", views.servicios_list, name="servicios_list"),
     path("servicios/<int:servicio_id>/pagar/", views.registrar_pago, name="registrar_pago"),
+    path("servicios/<int:servicio_id>/cuenta-cobro/emitir/", views.emitir_cuenta_cobro_view, name="emitir_cuenta_cobro"),
     path("servicios/<int:servicio_id>/cuenta-cobro.pdf", views.cuenta_cobro_pdf, name="cuenta_cobro_pdf"),
     path("pagos/", views.pagos_list, name="pagos_list"),
     path("pagos/<int:pago_id>/anular/", views.anular_pago, name="anular_pago"),

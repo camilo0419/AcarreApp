@@ -13,7 +13,7 @@ from django.views.generic import DetailView, ListView
 
 from acarreapp.tenancy import get_current_empresa
 from cartera.models import PagoServicio
-from cartera.services import registrar_pago_servicio, sincronizar_estado_pago
+from cartera.services import registrar_pago_servicio
 from empresa.models import Cliente
 from rutas.models import Ruta
 
@@ -152,16 +152,11 @@ def crear_servicio(request):
                 return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": ruta_prefill})
 
             obj.valor = obj.valor or 0
-            pago_inicial = int(obj.anticipo or 0)
-            if obj.estado_pago == Servicio.PAGADO:
-                pago_inicial = int(obj.valor or 0)
-            elif obj.estado_pago == Servicio.PENDIENTE:
-                pago_inicial = 0
+            pago_inicial = int(form.cleaned_data.get("pago_inicial") or 0)
+            medio_pago_inicial = form.cleaned_data.get("medio_pago_inicial") or PagoServicio.MEDIO_EFECTIVO
 
             try:
                 with transaction.atomic():
-                    obj.estado_pago = Servicio.PENDIENTE
-                    obj.anticipo = 0
                     obj.save()
                     if pago_inicial > 0:
                         registrar_pago_servicio(
@@ -169,11 +164,11 @@ def crear_servicio(request):
                             empresa=emp,
                             usuario=user,
                             valor=pago_inicial,
-                            medio_pago=PagoServicio.MEDIO_EFECTIVO,
+                            medio_pago=medio_pago_inicial,
                             observacion="Pago inicial registrado al crear el servicio.",
                         )
             except ValidationError as exc:
-                form.add_error("anticipo", exc.messages[0] if hasattr(exc, "messages") else str(exc))
+                form.add_error("pago_inicial", exc.messages[0] if hasattr(exc, "messages") else str(exc))
                 return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": ruta_prefill})
             messages.success(request, f"Servicio #{obj.id} creado correctamente.")
             if es_conductor and not es_gerente:
@@ -244,12 +239,7 @@ def editar_servicio(request, pk):
             if total_pagado > int(s.valor or 0):
                 form.add_error("valor", f"El valor no puede ser menor al total pagado (${total_pagado:,}).")
                 return render(request, "servicios/crear_servicio.html", {"form": form, "ruta_prefill": obj.ruta})
-            s.anticipo = total_pagado
-            s.estado_pago = Servicio.PAGADO if total_pagado >= int(s.valor or 0) and int(s.valor or 0) > 0 else (
-                Servicio.ANTICIPO if total_pagado > 0 else Servicio.PENDIENTE
-            )
             s.save()
-            sincronizar_estado_pago(s, total_pagado)
             messages.success(request, f"Servicio #{s.id} actualizado correctamente.")
             return redirect("servicios:detail", pk=s.pk)
         messages.error(request, "Por favor corrige los errores del formulario.")

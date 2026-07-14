@@ -2,7 +2,7 @@ import unittest
 from datetime import date
 
 from django.contrib.auth.models import User
-from django.core.exceptions import ValidationError
+from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -13,7 +13,7 @@ from servicios.models import Servicio
 from usuarios.models import UserProfile
 
 from .models import CarteraEmpresaConfig, CuentaCobro, PagoServicio
-from .services import obtener_o_crear_cuenta_cobro, registrar_pago_servicio
+from .services import anular_pago_servicio, emitir_cuenta_cobro, registrar_pago_servicio
 
 try:
     import weasyprint  # noqa: F401
@@ -62,8 +62,6 @@ class CarteraBusinessTests(TestCase):
             ruta=self.ruta_a,
             cliente=self.cliente_a,
             valor=1000,
-            estado_pago=Servicio.ANTICIPO,
-            anticipo=400,
             origen="Bodega",
             destino="Cliente",
         )
@@ -74,6 +72,51 @@ class CarteraBusinessTests(TestCase):
             origen="Otro origen",
             destino="Otro destino",
         )
+        self.pago_inicial = PagoServicio.objects.create(
+            empresa=self.empresa_a,
+            servicio=self.servicio_a,
+            cliente=self.cliente_a,
+            ruta=self.ruta_a,
+            valor=400,
+            medio_pago=PagoServicio.MEDIO_ANTICIPO,
+            registrado_por=self.gerente_a,
+            impacta_caja=False,
+        )
+
+    def test_servicio_financial_state_is_derived_from_active_payments(self):
+        for field_name in ("anticipo", "estado_pago"):
+            with self.assertRaises(FieldDoesNotExist):
+                Servicio._meta.get_field(field_name)
+
+        self.assertEqual(self.servicio_b.total_pagado, 0)
+        self.assertEqual(self.servicio_b.saldo_cartera, 700)
+        self.assertEqual(self.servicio_b.estado_pago, Servicio.PENDIENTE)
+
+        PagoServicio.objects.create(
+            empresa=self.empresa_b,
+            servicio=self.servicio_b,
+            cliente=self.cliente_b,
+            ruta=self.ruta_b,
+            valor=300,
+            medio_pago=PagoServicio.MEDIO_TRANSFERENCIA,
+            registrado_por=self.gerente_b,
+        )
+        self.assertEqual(self.servicio_b.total_pagado, 300)
+        self.assertEqual(self.servicio_b.saldo_cartera, 400)
+        self.assertEqual(self.servicio_b.estado_pago, Servicio.PARCIAL)
+
+        PagoServicio.objects.create(
+            empresa=self.empresa_b,
+            servicio=self.servicio_b,
+            cliente=self.cliente_b,
+            ruta=self.ruta_b,
+            valor=400,
+            medio_pago=PagoServicio.MEDIO_TRANSFERENCIA,
+            registrado_por=self.gerente_b,
+        )
+        self.assertEqual(self.servicio_b.total_pagado, 700)
+        self.assertEqual(self.servicio_b.saldo_cartera, 0)
+        self.assertEqual(self.servicio_b.estado_pago, Servicio.PAGADO)
 
     def test_dashboard_is_manager_only_and_company_scoped(self):
         self.client.force_login(self.conductor_a)
@@ -97,8 +140,8 @@ class CarteraBusinessTests(TestCase):
         self.assertIsNotNone(pago.movimiento_caja_id)
 
         self.servicio_a.refresh_from_db()
-        self.assertEqual(self.servicio_a.anticipo, 600)
-        self.assertEqual(self.servicio_a.estado_pago, Servicio.ANTICIPO)
+        self.assertEqual(self.servicio_a.total_pagado, 600)
+        self.assertEqual(self.servicio_a.estado_pago, Servicio.PARCIAL)
         self.assertEqual(self.servicio_a.saldo_cartera, 400)
         self.assertEqual(PagoServicio.objects.filter(servicio=self.servicio_a, anulado=False).count(), 2)
         self.assertEqual(MovimientoCaja.objects.filter(ruta=self.ruta_a, tipo="INGRESO").count(), 1)
@@ -112,8 +155,40 @@ class CarteraBusinessTests(TestCase):
                 medio_pago=PagoServicio.MEDIO_EFECTIVO,
             )
         self.servicio_a.refresh_from_db()
-        self.assertEqual(self.servicio_a.anticipo, 600)
+        self.assertEqual(self.servicio_a.total_pagado, 600)
         self.assertEqual(PagoServicio.objects.filter(servicio=self.servicio_a, anulado=False).count(), 2)
+
+    def test_zero_and_negative_payments_are_rejected(self):
+        for valor in (0, -10):
+            with self.assertRaises(ValidationError):
+                registrar_pago_servicio(
+                    self.servicio_a.pk,
+                    empresa=self.empresa_a,
+                    usuario=self.gerente_a,
+                    valor=valor,
+                    medio_pago=PagoServicio.MEDIO_EFECTIVO,
+                )
+        self.assertEqual(PagoServicio.objects.filter(servicio=self.servicio_a, anulado=False).count(), 1)
+
+    def test_annulled_payment_stops_counting_and_reverses_cash(self):
+        pago = registrar_pago_servicio(
+            self.servicio_a.pk,
+            empresa=self.empresa_a,
+            usuario=self.gerente_a,
+            valor=200,
+            medio_pago=PagoServicio.MEDIO_EFECTIVO,
+        )
+
+        anular_pago_servicio(pago.id, empresa=self.empresa_a, usuario=self.gerente_a, motivo="Error")
+        pago.refresh_from_db()
+        self.servicio_a.refresh_from_db()
+
+        self.assertTrue(pago.anulado)
+        self.assertIsNotNone(pago.movimiento_reversion_id)
+        self.assertEqual(self.servicio_a.total_pagado, 400)
+        self.assertEqual(self.servicio_a.saldo_cartera, 600)
+        self.assertEqual(MovimientoCaja.objects.filter(ruta=self.ruta_a, tipo="INGRESO").count(), 1)
+        self.assertEqual(MovimientoCaja.objects.filter(ruta=self.ruta_a, tipo="GASTO").count(), 1)
 
     def test_payment_after_route_close_does_not_mutate_cash_or_existing_closure(self):
         cierre = cerrar_ruta(self.ruta_a, self.gerente_a)
@@ -132,7 +207,7 @@ class CarteraBusinessTests(TestCase):
         self.assertEqual(MovimientoCaja.objects.filter(ruta=self.ruta_a).count(), 0)
 
         self.servicio_a.refresh_from_db()
-        self.assertEqual(self.servicio_a.anticipo, 600)
+        self.assertEqual(self.servicio_a.total_pagado, 600)
         cierre.refresh_from_db()
         self.assertEqual(cierre.total_cobrado, 400)
         self.assertEqual(cierre.total_pendiente, 600)
@@ -148,7 +223,7 @@ class CarteraBusinessTests(TestCase):
             {"valor": "9999", "medio_pago": PagoServicio.MEDIO_EFECTIVO, "fecha_pago": date.today().isoformat()},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(PagoServicio.objects.filter(servicio=self.servicio_a).count(), 0)
+        self.assertEqual(PagoServicio.objects.filter(servicio=self.servicio_a, anulado=False).count(), 1)
 
         pago = registrar_pago_servicio(
             self.servicio_a.pk,
@@ -159,6 +234,31 @@ class CarteraBusinessTests(TestCase):
         response = self.client.get(reverse("cartera:anular_pago", args=[pago.id]))
         self.assertEqual(response.status_code, 405)
 
+    def test_cuenta_cobro_get_is_read_only_and_post_is_idempotent(self):
+        config = CarteraEmpresaConfig.objects.create(
+            empresa=self.empresa_a,
+            nombre_emisor="Transportes A",
+            prefijo_cuenta_cobro="AC",
+            proximo_consecutivo=5,
+        )
+        self.client.force_login(self.gerente_a)
+
+        response = self.client.get(reverse("cartera:cuenta_cobro_pdf", args=[self.servicio_a.id]))
+        self.assertEqual(response.status_code, 404)
+        config.refresh_from_db()
+        self.assertEqual(config.proximo_consecutivo, 5)
+        self.assertEqual(CuentaCobro.objects.count(), 0)
+
+        emitir_url = reverse("cartera:emitir_cuenta_cobro", args=[self.servicio_a.id])
+        self.assertEqual(self.client.post(emitir_url).status_code, 302)
+        self.assertEqual(self.client.post(emitir_url).status_code, 302)
+        config.refresh_from_db()
+
+        cuenta = CuentaCobro.objects.get(servicio=self.servicio_a)
+        self.assertEqual(cuenta.numero, "AC-000005")
+        self.assertEqual(config.proximo_consecutivo, 6)
+        self.assertEqual(CuentaCobro.objects.count(), 1)
+
     def test_cuenta_cobro_consecutive_is_company_scoped_and_idempotent(self):
         config = CarteraEmpresaConfig.objects.create(
             empresa=self.empresa_a,
@@ -166,8 +266,8 @@ class CarteraBusinessTests(TestCase):
             prefijo_cuenta_cobro="AC",
             proximo_consecutivo=5,
         )
-        cuenta_1 = obtener_o_crear_cuenta_cobro(self.servicio_a, self.gerente_a)
-        cuenta_2 = obtener_o_crear_cuenta_cobro(self.servicio_a, self.gerente_a)
+        cuenta_1 = emitir_cuenta_cobro(self.servicio_a, self.gerente_a)
+        cuenta_2 = emitir_cuenta_cobro(self.servicio_a, self.gerente_a)
         config.refresh_from_db()
 
         self.assertEqual(cuenta_1.pk, cuenta_2.pk)
@@ -183,6 +283,7 @@ class CarteraBusinessTests(TestCase):
         self.assertEqual(estado["Content-Type"], "application/pdf")
         self.assertTrue(estado.content.startswith(b"%PDF"))
 
+        emitir_cuenta_cobro(self.servicio_a, self.gerente_a)
         cuenta = self.client.get(reverse("cartera:cuenta_cobro_pdf", args=[self.servicio_a.id]))
         self.assertEqual(cuenta.status_code, 200)
         self.assertEqual(cuenta["Content-Type"], "application/pdf")

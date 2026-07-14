@@ -2,119 +2,135 @@
 
 Fecha de cierre: 2026-07-14
 
-## Alcance implementado
+## Veredicto
 
-Se formalizo el modulo de cartera como parte nativa de AcarreApp, sin acoplarlo a CarterApp ni a repositorios externos. La ruta principal del modulo queda en `/cartera/` y el menu de gerencia ahora incluye acceso directo a Cartera.
+El modulo de cartera queda apto para primer commit local. No se hizo commit, push ni deploy.
 
-## Decisiones de arquitectura
+La correccion principal de esta auditoria fue retirar la doble fuente financiera: `Servicio` ya no persiste `anticipo` ni `estado_pago`. El saldo, el total pagado y el estado se derivan exclusivamente de pagos activos en `PagoServicio`.
 
-- `PagoServicio` es la fuente formal de pagos, historial y anulaciones.
-- `Servicio.anticipo` se conserva como total pagado sincronizado para no romper cierres, listados y calculos existentes.
-- Los anticipos historicos se migran a pagos legacy con `impacta_caja=False`, evitando duplicar caja.
-- Los pagos de rutas activas crean `MovimientoCaja` de tipo `INGRESO` y quedan enlazados al pago.
-- Los pagos de rutas cerradas actualizan cartera, pero no modifican caja ni `CierreRuta`, para no desbalancear cierres ya emitidos.
-- Las anulaciones de pagos con caja solo se permiten si la ruta sigue activa; generan un movimiento de reversion tipo `GASTO`.
-- La cuenta de cobro es 1:1 por servicio y conserva un consecutivo estable por empresa.
+## Fuente de verdad financiera
 
-## Modelos nuevos
+- `PagoServicio` es la unica fuente persistida para pagos, anulaciones, caja asociada, total pagado, saldo y estado de cartera.
+- `Servicio.total_pagado`, `Servicio.saldo_cartera`, `Servicio.estado_pago` y `Servicio.anticipo` son propiedades derivadas de lectura. `anticipo` queda solo como compatibilidad temporal y retorna el total pagado, sin campo de base de datos ni escritura manual.
+- La migracion `cartera.0002_migrar_anticipos_a_pagos` migra anticipos historicos a pagos legacy con `impacta_caja=False`.
+- La migracion `servicios.0009_remove_servicio_anticipo_remove_servicio_estado_pago_and_more` elimina fisicamente las columnas antiguas despues de esa migracion de datos.
+- Los pagos con valor cero, negativo o superior al saldo se rechazan antes de crear historial o movimiento de caja.
+- Las anulaciones no borran pagos: marcan `anulado=True` y, si hubo caja activa, generan movimiento de reversion.
 
-- `CarteraEmpresaConfig`: datos del emisor, logo estatico, notas PDF, prefijo y proximo consecutivo por empresa.
-- `PagoServicio`: pago auditable por servicio, cliente, ruta y empresa, con medio, referencia, usuario, caja y anulacion.
-- `CuentaCobro`: consecutivo y numero estable por empresa/servicio.
+## GET sin mutaciones
 
-## Rutas principales
-
-- `/cartera/`: dashboard de cartera.
-- `/cartera/clientes/`: clientes con saldo.
-- `/cartera/clientes/<id>/`: detalle de cartera por cliente.
-- `/cartera/servicios/`: servicios pendientes filtrables.
-- `/cartera/servicios/<id>/pagar/`: registro formal de pagos.
-- `/cartera/pagos/`: historial y anulaciones.
-- `/cartera/configuracion/`: configuracion por empresa.
-- `/cartera/clientes/<id>/estado-cuenta.pdf`: estado de cuenta PDF.
-- `/cartera/servicios/<id>/cuenta-cobro.pdf`: cuenta de cobro PDF.
-
-Se conservaron aliases antiguos:
-
-- `/cartera/pendientes/`
-- `/cartera/cliente/<id>/`
-
-## Seguridad y multiempresa
-
-- Todas las vistas de cartera requieren usuario autenticado con rol `GERENTE`, staff o superuser.
-- Conductores reciben 403 en el modulo de cartera.
-- Todas las consultas filtran por `get_current_empresa()`.
-- Los pagos validan empresa, servicio, cliente y ruta en backend.
-- Los pagos y anulaciones mutan solo por POST o por formularios POST; las descargas PDF y vistas GET no modifican saldos, salvo la emision idempotente de cuenta de cobro.
+- La cuenta de cobro ya no se emite desde `GET /cartera/servicios/<id>/cuenta-cobro.pdf`.
+- La emision vive en `POST /cartera/servicios/<id>/cuenta-cobro/emitir/`.
+- El GET del PDF solo descarga una cuenta previamente emitida; si no existe, responde 404 y no incrementa consecutivo.
+- Se actualizaron templates para usar formulario POST en vez de enlace directo de emision.
 
 ## PDFs
 
-Se implementaron PDFs con WeasyPrint:
-
-- Estado de cuenta por cliente.
-- Cuenta de cobro por servicio.
-
-El logo se toma desde `CarteraEmpresaConfig.logo_static_path`, por defecto `static/icons/Logo.png`, y se renderiza con dimensiones fijas y `object-fit: contain` para evitar deformacion.
-
-Se genero y reviso visualmente una muestra de cada PDF:
-
-- `tmp/pdfs/estado_cuenta_muestra.pdf`
-- `tmp/pdfs/cuenta_cobro_muestra.pdf`
-- PNGs renderizados en `tmp/pdfs/rendered/`
-
-Resultado visual: una pagina Letter por PDF, tablas legibles, logo sin deformacion, encabezados y pies alineados.
+- Estado de cuenta y cuenta de cobro usan `@page { size: A4; }`.
+- WeasyPrint queda fijado en `WeasyPrint==69.0`.
+- PDFs de auditoria generados:
+  - `tmp/pdfs/estado_cuenta_a4_audit.pdf`
+  - `tmp/pdfs/cuenta_cobro_a4_audit.pdf`
+- Verificacion Poppler:
+  - Estado de cuenta: `595.276 x 841.89 pts (A4)`, 1 pagina.
+  - Cuenta de cobro: `595.276 x 841.89 pts (A4)`, 1 pagina.
+- Ambos PDFs renderizaron a PNG no vacio:
+  - `tmp/pdfs/estado_cuenta_a4_audit.png`
+  - `tmp/pdfs/cuenta_cobro_a4_audit.png`
 
 ## Dependencias
 
-Se agregaron `WeasyPrint>=62.3` y `brotlicffi>=1.2.0.1` a `requirements.txt`.
+`requirements.txt` queda con versiones fijadas:
 
-Para validar localmente se instalo WeasyPrint 69.0 en `.venv`. En OneDrive aparecio un problema de permisos con `brotli.py`; se resolvio usando `brotlicffi` y ejecutando validaciones con `PYTHONDONTWRITEBYTECODE=1`.
+- `Django==5.0.7`
+- `django-filter==24.2`
+- `openpyxl==3.1.5`
+- `psycopg[binary]==3.1.19`
+- `python-dotenv==1.0.1`
+- `pywebpush==1.14.0`
+- `cryptography==49.0.0`
+- `brotlicffi==1.2.0.1`
+- `WeasyPrint==69.0`
 
-## Pruebas agregadas
+## Auditoria operativa
 
-Archivo: `cartera/tests.py`
+Se agrego el comando read-only:
 
-Cobertura incluida:
+```powershell
+python manage.py auditar_cartera
+```
 
-- Acceso gerente vs conductor.
-- Aislamiento multiempresa en dashboard.
-- Pago parcial con historial y movimiento de caja.
-- Rechazo de sobrepago sin mutar saldos.
-- Pago posterior a cierre sin tocar caja ni `CierreRuta`.
-- Endpoints mutantes sin GET.
-- Consecutivo idempotente de cuenta de cobro.
-- PDFs reales con bytes `%PDF`.
+Detecta:
+
+- servicios sobrepagados;
+- pagos cruzados de empresa, ruta, cliente o servicio;
+- pagos que debian impactar caja y no tienen movimiento;
+- pagos con movimiento de caja inesperado;
+- movimientos o reversiones con valor, tipo, empresa o ruta inconsistentes;
+- pagos anulados sin reversion cuando corresponde;
+- cuentas de cobro fuera del scope de empresa/cliente.
+
+Por defecto no modifica datos y retorna 0 aunque reporte hallazgos. Para CI existe `--fail-on-issues`.
+
+Resultado local ejecutado: 0 inconsistencias.
+
+## Pruebas cubiertas
+
+Archivo principal: `cartera/tests.py`
+
+Cobertura nueva o reforzada:
+
+- ausencia de campos persistidos `Servicio.anticipo` y `Servicio.estado_pago`;
+- estados derivables: sin pagos, parcial y pagado;
+- pago parcial con historial y movimiento de caja;
+- rechazo de sobrepago, pago cero y pago negativo;
+- anulacion de pago y reversion de caja;
+- pago posterior a cierre sin mutar caja ni `CierreRuta`;
+- GET de pago/anulacion sin mutacion;
+- GET de cuenta de cobro sin emision ni incremento de consecutivo;
+- POST de cuenta de cobro idempotente;
+- PDFs reales con bytes `%PDF`;
+- aislamiento multiempresa en dashboard.
+
+Tambien se actualizaron pruebas de cierre/rutas para que el cobrado y saldo se calculen desde `PagoServicio`.
 
 ## Validaciones ejecutadas
 
-- `manage.py migrate`: OK.
 - `manage.py check`: OK.
-- `manage.py makemigrations --check --dry-run`: OK, sin cambios.
-- `manage.py collectstatic --noinput --dry-run`: OK.
-- `manage.py test cartera -v 2`: 6 tests OK.
-- `manage.py test -v 2`: 16 tests OK.
-- `manage.py check --deploy`: 6 warnings esperadas de entorno local (`DEBUG`, HTTPS/cookies seguras, `SECRET_KEY`), no atribuibles al modulo de cartera.
+- `manage.py migrate`: OK, aplico `servicios.0009`.
+- `manage.py showmigrations servicios cartera`: `cartera.0002` y `servicios.0009` aplicadas.
+- `manage.py makemigrations --check --dry-run`: OK, `No changes detected`.
+- `manage.py test cartera rutas -v 2`: 18 tests OK.
+- `manage.py test -v 2`: 20 tests OK.
+- `manage.py collectstatic --dry-run --noinput`: OK, 138 static files.
+- `manage.py auditar_cartera`: OK, 0 inconsistencias.
+- `manage.py check --deploy`: 6 warnings esperadas de entorno local (`DEBUG`, HTTPS/cookies seguras, HSTS y `SECRET_KEY`), no atribuibles al modulo de cartera.
 
 ## Archivos principales tocados
 
-- `cartera/models.py`
+- `acarreapp/views.py`
+- `cartera/management/commands/auditar_cartera.py`
+- `cartera/queries.py`
 - `cartera/services.py`
-- `cartera/views.py`
-- `cartera/forms.py`
-- `cartera/pdf.py`
-- `cartera/admin.py`
-- `cartera/urls.py`
-- `cartera/migrations/0001_initial.py`
-- `cartera/migrations/0002_migrar_anticipos_a_pagos.py`
 - `cartera/tests.py`
+- `cartera/urls.py`
+- `cartera/views.py`
+- `dashboard/views.py`
+- `docs/INFORME_FINAL_ACARREAPP.md`
+- `docs/INFORME_FINAL_CARTERA.md`
+- `requirements.txt`
+- `rutas/services.py`
+- `rutas/tests.py`
+- `rutas/views.py`
+- `servicios/forms.py`
+- `servicios/migrations/0009_remove_servicio_anticipo_remove_servicio_estado_pago_and_more.py`
 - `servicios/models.py`
 - `servicios/views.py`
 - `templates/cartera/*`
 - `templates/cartera/pdf/*`
-- `templates/servicios/detail.html`
-- `templates/includes/navbar.html`
-- `requirements.txt`
+- `templates/rutas/*`
+- `templates/servicios/*`
 
 ## Estado final
 
-Modulo de cartera integrado, migrado, probado y validado. No se hizo commit, push ni deploy.
+Cartera queda con una sola fuente de verdad financiera, PDFs A4 verificados, cuenta de cobro sin mutacion por GET, dependencias fijadas, auditor read-only y pruebas/migraciones completas. No se hizo commit, push ni deploy.

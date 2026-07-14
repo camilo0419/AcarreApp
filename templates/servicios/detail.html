@@ -93,7 +93,7 @@
     {% if object.estado_pago == "PAG" %}
       <span class="badge text-bg-success">Servicio PAGADO</span>
     {% elif object.estado_pago == "ANT" %}
-      <span class="badge text-bg-warning">Anticipo</span>
+      <span class="badge text-bg-warning">Parcial</span>
     {% else %}
       <span class="badge text-bg-secondary">Pendiente de pago</span>
     {% endif %}
@@ -333,7 +333,10 @@
       {% with rol=user.userprofile.rol|default_if_none:'' %}
         {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
           <span>
-            <a class="btn btn-sm btn-outline-secondary" href="{% url 'cartera:cuenta_cobro_pdf' object.id %}">Cuenta PDF</a>
+            <form method="post" action="{% url 'cartera:emitir_cuenta_cobro' object.id %}" style="display:inline;">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-outline-secondary">Cuenta PDF</button>
+            </form>
             {% if object.saldo_cartera > 0 %}
               <a class="btn btn-sm btn-outline-success" href="{% url 'cartera:registrar_pago' object.id %}">Registrar pago</a>
             {% endif %}

@@ -1,12 +1,16 @@
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Sum
+from django.db.models import F, IntegerField, Q, Sum, Value
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from rutas.models import MovimientoCaja
 from servicios.models import Servicio
 
 from .models import CarteraEmpresaConfig, CuentaCobro, PagoServicio
+
+TOTAL_PAGADO_ANNOTATION = "total_pagado_calc"
+SALDO_CARTERA_ANNOTATION = "saldo_cartera_calc"
 
 
 def obtener_config_cartera(empresa):
@@ -21,52 +25,53 @@ def obtener_config_cartera(empresa):
 
 
 def total_pagado_servicio(servicio):
-    pagos = PagoServicio.objects.filter(servicio=servicio, anulado=False)
-    if pagos.exists():
-        return int(pagos.aggregate(total=Sum("valor"))["total"] or 0)
-    return int(servicio.anticipo or 0)
+    annotated = getattr(servicio, TOTAL_PAGADO_ANNOTATION, None)
+    if annotated is not None:
+        return int(annotated or 0)
+    return int(
+        PagoServicio.objects.filter(servicio=servicio, anulado=False).aggregate(total=Sum("valor"))["total"] or 0
+    )
+
+
+def saldo_servicio(servicio):
+    annotated = getattr(servicio, SALDO_CARTERA_ANNOTATION, None)
+    if annotated is not None:
+        return max(int(annotated or 0), 0)
+    return max(int(servicio.valor or 0) - total_pagado_servicio(servicio), 0)
 
 
 def estado_pago_para(valor_servicio, total_pagado):
     valor_servicio = int(valor_servicio or 0)
     total_pagado = int(total_pagado or 0)
+    if total_pagado <= 0:
+        return Servicio.PENDIENTE
     if valor_servicio > 0 and total_pagado >= valor_servicio:
         return Servicio.PAGADO
-    if total_pagado > 0:
-        return Servicio.ANTICIPO
-    return Servicio.PENDIENTE
+    return Servicio.PARCIAL
 
 
-def sincronizar_estado_pago(servicio, total_pagado=None):
-    if total_pagado is None:
-        total_pagado = total_pagado_servicio(servicio)
-    total_pagado = min(int(total_pagado or 0), int(servicio.valor or 0))
-    servicio.anticipo = total_pagado
-    servicio.estado_pago = estado_pago_para(servicio.valor, total_pagado)
-    servicio.save(update_fields=["anticipo", "estado_pago"])
-    return servicio
+def estado_pago_servicio(servicio):
+    return estado_pago_para(servicio.valor, total_pagado_servicio(servicio))
 
 
-def _crear_pago_legacy_si_falta(servicio):
-    anticipo = int(servicio.anticipo or 0)
-    if anticipo <= 0:
-        return
-    if PagoServicio.objects.filter(servicio=servicio).exists():
-        return
-    valor = min(anticipo, int(servicio.valor or 0))
-    if valor <= 0:
-        return
-    PagoServicio.objects.create(
-        empresa=servicio.ruta.empresa,
-        servicio=servicio,
-        cliente=servicio.cliente,
-        ruta=servicio.ruta,
-        valor=valor,
-        medio_pago=PagoServicio.MEDIO_ANTICIPO,
-        fecha_pago=servicio.ruta.fecha_salida,
-        observacion="Pago migrado desde el anticipo historico del servicio.",
-        impacta_caja=False,
+def anotar_finanzas_servicios(qs):
+    return qs.annotate(
+        **{
+            TOTAL_PAGADO_ANNOTATION: Coalesce(
+                Sum("pagos__valor", filter=Q(pagos__anulado=False)),
+                Value(0),
+                output_field=IntegerField(),
+            )
+        }
+    ).annotate(
+        **{
+            SALDO_CARTERA_ANNOTATION: F("valor") - F(TOTAL_PAGADO_ANNOTATION),
+        }
     )
+
+
+def servicios_con_saldo(qs):
+    return anotar_finanzas_servicios(qs).filter(**{f"{SALDO_CARTERA_ANNOTATION}__gt": 0})
 
 
 def _sumar_pagos_bloqueados(servicio):
@@ -76,6 +81,12 @@ def _sumar_pagos_bloqueados(servicio):
         .aggregate(total=Sum("valor"))["total"]
         or 0
     )
+
+
+def validar_sin_sobrepago(servicio, total_pagado=None):
+    total_pagado = total_pagado_servicio(servicio) if total_pagado is None else int(total_pagado or 0)
+    if total_pagado > int(servicio.valor or 0):
+        raise ValidationError("El total pagado no puede superar el valor del servicio.")
 
 
 @transaction.atomic
@@ -106,7 +117,6 @@ def registrar_pago_servicio(
     if valor <= 0:
         raise ValidationError("El valor del pago debe ser positivo.")
 
-    _crear_pago_legacy_si_falta(servicio)
     total_actual = _sumar_pagos_bloqueados(servicio)
     saldo = max(int(servicio.valor or 0) - total_actual, 0)
     if saldo <= 0:
@@ -145,7 +155,7 @@ def registrar_pago_servicio(
         pago.movimiento_caja = movimiento
         pago.save(update_fields=["movimiento_caja"])
 
-    sincronizar_estado_pago(servicio, total_actual + valor)
+    validar_sin_sobrepago(servicio, total_actual + valor)
     return pago
 
 
@@ -186,14 +196,19 @@ def anular_pago_servicio(pago_id, *, empresa, usuario, motivo):
             "movimiento_reversion",
         ]
     )
-    total_actual = _sumar_pagos_bloqueados(pago.servicio)
-    sincronizar_estado_pago(pago.servicio, total_actual)
+    validar_sin_sobrepago(pago.servicio)
     return pago
 
 
+def obtener_cuenta_cobro(servicio):
+    return CuentaCobro.objects.filter(servicio=servicio, empresa=servicio.ruta.empresa).first()
+
+
 @transaction.atomic
-def obtener_o_crear_cuenta_cobro(servicio, usuario=None):
-    cuenta = CuentaCobro.objects.filter(servicio=servicio, empresa=servicio.ruta.empresa).first()
+def emitir_cuenta_cobro(servicio, usuario=None):
+    cuenta = CuentaCobro.objects.select_for_update().filter(
+        servicio=servicio, empresa=servicio.ruta.empresa
+    ).first()
     if cuenta:
         return cuenta
 
