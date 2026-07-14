@@ -7,6 +7,7 @@ from .models import PushSubscription
 from .utils import send_webpush_to_user
 from django.http import HttpResponseForbidden
 from django.conf import settings
+from acarreapp.tenancy import get_current_empresa
 
 @login_required
 @require_POST
@@ -25,13 +26,20 @@ def subscribe(request):
 
         PushSubscription.objects.update_or_create(
             endpoint=endpoint,
-            defaults={"user": request.user, "p256dh": p256dh, "auth": auth, "user_agent": ua},
+            defaults={
+                "user": request.user,
+                "empresa": get_current_empresa(),
+                "p256dh": p256dh,
+                "auth": auth,
+                "user_agent": ua,
+            },
         )
         return JsonResponse({"ok": True})
     except Exception as e:
         return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
 @login_required
+@require_POST
 def test_push_me(request):
     send_webpush_to_user(
         request.user,
@@ -43,6 +51,7 @@ def test_push_me(request):
     return JsonResponse({"ok": True})
 
 @login_required
+@require_POST
 def delete_my_subs(request):
     PushSubscription.objects.filter(user=request.user).delete()
     return JsonResponse({"ok": True})

@@ -37,9 +37,7 @@ def _empresa_serv_qs():
 def _rutas_qs_base():
     qs = Ruta.objects.select_related("vehiculo", "conductor")
     emp = get_current_empresa()
-    if emp:
-        qs = qs.filter(empresa=emp)
-    return qs
+    return qs.filter(empresa=emp) if emp else qs.none()
 
 def _rutas_activas_qs():
     qs = _rutas_qs_base()
@@ -473,14 +471,14 @@ class CarteraView(GerenteRequiredMixin, TemplateView):
 
 
 # -------- APIs ----------
-class RutasActivasLiteAPI(LoginRequiredMixin, View):
+class RutasActivasLiteAPI(GerenteRequiredMixin, View):
     def get(self, request):
         limit = request.GET.get("limit")
         lim = int(limit) if (limit and str(limit).isdigit()) else 6
         data = _rutas_activas_cards(limit=lim)
         return JsonResponse({"routes": data})
 
-class RutaPointsAPI(LoginRequiredMixin, View):
+class RutaPointsAPI(GerenteRequiredMixin, View):
     """Devuelve puntos (lat,lon) ordenados temporalmente desde los servicios de la ruta."""
     def get(self, request, pk: int):
         try:

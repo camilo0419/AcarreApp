@@ -7,5 +7,6 @@ urlpatterns = [
     path("debug/", views.debug, name="debug"),
     path("test-me/", views.test_push_me, name="test_me"),
     path("status/", views.status, name="status"),
+    path("delete-my-subs/", views.delete_my_subs, name="delete_my_subs"),
 
 ]

@@ -132,7 +132,7 @@
   <div class="actions-inline">
     <a class="btn btn-outline-primary" href="{% url 'servicios:por_ruta' ruta.id %}">📋 Ver servicios (lista)</a>
 
-    {% if user.is_superuser or user.is_staff %}
+    {% if es_gerente %}
       {% if ruta.estado == "ACTIVA" %}
         <form method="post"
               action="{% url 'rutas:cerrar' ruta.id %}"

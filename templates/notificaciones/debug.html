@@ -96,7 +96,7 @@
 
   async function checkAll(){
     try{
-      const reg = await navigator.serviceWorker.getRegistration('/static/sw.js');
+      const reg = await navigator.serviceWorker.getRegistration('/');
       mark(swEl, reg ? 'ok' : 'bad', reg ? 'OK' : 'NO');
 
       const perm = (window.Notification && Notification.permission) ? Notification.permission : 'unsupported';
@@ -144,7 +144,11 @@
   // Probar ping
   btnPing.addEventListener('click', async () => {
     try{
-      const res = await fetch("/push/test-me/", {credentials: "include"});
+      const res = await fetch("/push/test-me/", {
+        method: "POST",
+        credentials: "include",
+        headers: {"X-CSRFToken": getCookie("csrftoken")}
+      });
       const j = await res.json();
       if (j.ok) alert('¡Ping enviado! Revisa la notificación.');
       else alert('Falló el ping.');
@@ -159,7 +163,11 @@
       const sub = await reg.pushManager.getSubscription();
       if (sub) await sub.unsubscribe();
       // Servidor: borrar mis subs
-      await fetch("/push/delete-my-subs/", {credentials: "include"});
+      await fetch("/push/delete-my-subs/", {
+        method: "POST",
+        credentials: "include",
+        headers: {"X-CSRFToken": getCookie("csrftoken")}
+      });
       await checkAll();
       alert('Suscripción reseteada. Ahora presiona "Suscribirme".');
     } catch(e){ console.warn(e); alert('Error en reset'); }

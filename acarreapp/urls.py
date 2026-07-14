@@ -21,6 +21,7 @@ urlpatterns = [
     path("post-login/", views.post_login_redirect, name="post_login"),
     path("", views.index, name="index"),
     path("index/", views.index),
+    path("sw.js", views.service_worker, name="service_worker"),
 
     # alias opcional SOLO para login (no para logout)
     path("account/login/", RedirectView.as_view(pattern_name="login", permanent=False)),

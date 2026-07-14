@@ -104,7 +104,7 @@
   </header>
 
   <div class="page-actions">
-    {% if user.is_superuser or user.is_staff %}
+    {% if es_gerente %}
       <a class="btn btn-primary" href="{% url 'rutas:crear' %}">➕ Crear ruta</a>
     {% endif %}
   </div>
@@ -148,10 +148,13 @@
                   {% if r.estado == "CERRADA" %}
                     <a href="{% url 'rutas:cierre_resumen' r.pk %}" class="btn btn-sm btn-cierre">📊 Ver cierre</a>
                   {% endif %}
-                  {% if user.is_superuser or user.is_staff %}
+                  {% if es_gerente %}
                     {% if r.estado == "ACTIVA" %}
-                      <a href="{% url 'rutas:borrar' r.pk %}" class="btn btn-sm btn-outline-dark"
-                         onclick="return confirm('¿Borrar ruta y sus servicios/movimientos?');">🗑️ Borrar</a>
+                      <form method="post" action="{% url 'rutas:borrar' r.pk %}" class="d-inline"
+                            onsubmit="return confirm('¿Borrar ruta y sus servicios/movimientos?');">
+                        {% csrf_token %}
+                        <button class="btn btn-sm btn-outline-dark">🗑️ Borrar</button>
+                      </form>
                     {% endif %}
                   {% endif %}
                 </td>

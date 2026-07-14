@@ -31,7 +31,7 @@ def cliente_detalle(request, cliente_id: int):
     cliente = get_object_or_404(Cliente, id=cliente_id, empresa=empresa)
 
     servicios = queries.cartera_por_cliente(empresa, cliente_id)
-    total_cliente = sum((s.valor for s in servicios), Decimal('0'))
+    total_cliente = sum((s.saldo_cartera for s in servicios), Decimal('0'))
 
     contexto = {
         'empresa': empresa,

@@ -5,9 +5,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h1 class="m-0">Mis servicios</h1>
-  <div class="d-flex gap-2">
-    <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">⬅️ Rutas</a>
-  </div>
+  <a class="btn btn-outline-secondary" href="{% url 'rutas:list' %}">Volver a rutas</a>
 </div>
 
 <div class="card">
@@ -18,7 +16,7 @@
           <th>#</th>
           <th>Ruta</th>
           <th>Cliente</th>
-          <th>Origen → Destino</th>
+          <th>Origen - Destino</th>
           <th class="text-end">Valor</th>
           <th>Pago</th>
           <th>Estado</th>
@@ -35,15 +33,15 @@
             </td>
             <td>{{ s.cliente }}</td>
             <td>
-              <small>{{ s.origen|default:"—" }} → {{ s.destino|default:"—" }}</small>
+              <small>{{ s.origen|default:"-" }} - {{ s.destino|default:"-" }}</small>
               <div class="small">
                 {% if s.lat_recogida and s.lon_recogida %}
-                  <a class="link-secondary" target="_blank"
-                     href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_recogida }},{{ s.lon_recogida }}">📍 Ir a recogida</a>
+                  <a class="link-secondary" target="_blank" rel="noopener"
+                     href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_recogida }},{{ s.lon_recogida }}">Ir a recogida</a>
                 {% endif %}
                 {% if s.lat_entrega and s.lon_entrega %}
-                  · <a class="link-secondary" target="_blank"
-                       href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_entrega }},{{ s.lon_entrega }}">📦 Ir a entrega</a>
+                  <a class="link-secondary" target="_blank" rel="noopener"
+                     href="https://www.google.com/maps/dir/?api=1&destination={{ s.lat_entrega }},{{ s.lon_entrega }}">Ir a entrega</a>
                 {% endif %}
               </div>
             </td>
@@ -58,29 +56,26 @@
               {% endif %}
             </td>
             <td>
-              {% if s.entregado %}✅ Entregado
-              {% elif s.recogido %}📦 En ruta
-              {% else %}⏳ Pendiente
+              {% if s.entregado %}Entregado
+              {% elif s.recogido %}En ruta
+              {% else %}Pendiente
               {% endif %}
             </td>
             <td class="text-center">
               <a class="btn btn-sm btn-outline-primary" href="{% url 'servicios:detail' s.id %}">Detalle</a>
-
               {% if s.ruta.estado == 'ACTIVA' %}
-                {% with rol=user.userprofile.rol|default_if_none:'' %}
-                  {% if user.is_superuser or user.is_staff or rol == 'GERENTE' or s.ruta.conductor_id == user.id %}
-                    {% if not s.recogido %}
-                      <form method="post" action="{% url 'servicios:marcar_recogido' s.id %}" class="d-inline">
-                        {% csrf_token %}<button class="btn btn-sm btn-outline-info">Marcar recogido</button>
-                      </form>
-                    {% endif %}
-                    {% if s.recogido and not s.entregado %}
-                      <form method="post" action="{% url 'servicios:marcar_entregado' s.id %}" class="d-inline">
-                        {% csrf_token %}<button class="btn btn-sm btn-outline-success">Marcar entregado</button>
-                      </form>
-                    {% endif %}
-                  {% endif %}
-                {% endwith %}
+                {% if not s.recogido %}
+                  <form method="post" action="{% url 'servicios:marcar_recogido' s.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-info">Marcar recogido</button>
+                  </form>
+                {% endif %}
+                {% if s.recogido and not s.entregado %}
+                  <form method="post" action="{% url 'servicios:marcar_entregado' s.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-success">Marcar entregado</button>
+                  </form>
+                {% endif %}
               {% endif %}
             </td>
           </tr>

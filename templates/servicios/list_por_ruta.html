@@ -150,9 +150,11 @@ table.table td.actions .row-actions .btn{
 
         {# Acciones móviles: SOLO gerente (conductor no marca ni elimina) #}
         {% if ruta.estado == 'ACTIVA' %}
-          {% if es_gerente %}
+          {% if es_gerente or es_conductor %}
             <div class="inline-actions">
-              <a class="btn-chip btn-chip-danger" href="{% url 'servicios:eliminar' s.id %}" onclick="event.stopPropagation();">🗑️ Eliminar</a>
+              {% if es_gerente %}
+                <a class="btn-chip btn-chip-danger" href="{% url 'servicios:eliminar' s.id %}" onclick="event.stopPropagation();">🗑️ Eliminar</a>
+              {% endif %}
 
               {% if not s.recogido %}
                 <form id="mrec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
@@ -247,7 +249,7 @@ table.table td.actions .row-actions .btn{
 
                 {# Marcar: SOLO gerente #}
                 {% if ruta.estado == 'ACTIVA' %}
-                  {% if es_gerente %}
+                  {% if es_gerente or es_conductor %}
                     {% if not s.recogido %}
                       <form id="rec-{{ s.id }}" method="post" action="{% url 'servicios:marcar_recogido' s.id %}">
                         {% csrf_token %}

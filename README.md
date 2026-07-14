@@ -1,20 +1,39 @@
-# AcarreApp – Skeleton v1
+﻿# AcarreApp
 
-## Requisitos
-- Python 3.12
-- pip
+AcarreApp is a Django application for route, service, cash, receivables and browser push notification management.
 
-## Instalación rápida (Windows PowerShell)
+## Local setup on Windows PowerShell
+
 ```powershell
-cd AcarreApp_skeleton_v1
-copy .env.example .env
 py -3.12 -m venv .venv
-.\.venv\Scripts\activate
-pip install --upgrade pip
-pip install -r requirements.txt
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+Copy-Item .env.example .env
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
 
-Abre http://127.0.0.1:8000 y entra a /admin para crear tu primera Empresa.
+Open `http://127.0.0.1:8000/`.
+
+## Push notifications
+
+Generate VAPID keys outside the repository and put them in `.env`.
+Do not commit real private keys. Browser push requires HTTPS in production; localhost is accepted by modern browsers for development.
+
+## Project shape
+
+The canonical Django project is the repository root:
+
+- `manage.py`
+- `acarreapp/`
+- `empresa/`
+- `usuarios/`
+- `rutas/`
+- `servicios/`
+- `cartera/`
+- `dashboard/`
+- `notificaciones/`
+- `templates/`
+- `static/`

@@ -1,387 +1,429 @@
+import csv
+import json
+from datetime import date, datetime, time
+from decimal import Decimal
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import HttpResponseForbidden, HttpResponse
+from django.db import IntegrityError, transaction
+from django.db.models import Q
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseForbidden,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
-from django.utils.decorators import method_decorator
-from django.views.generic import ListView, DetailView
-from django.db.models import Q
-from django.utils.safestring import mark_safe
 from django.utils import timezone
-from datetime import date, datetime, time
-import json
+from django.utils.decorators import method_decorator
+from django.utils.safestring import mark_safe
+from django.views import View
+from django.views.decorators.http import require_POST
+from django.views.generic import DetailView, ListView
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
+
 from acarreapp.tenancy import get_current_empresa
-from .models import Ruta, MovimientoCaja, CierreRuta
-from .forms import RutaForm
-from .services import cerrar_ruta
-from .logic import cerrar_ruta  # tu helper que realiza el cierre
-from django.db import IntegrityError
-# Para filtros del listado
-from empresa.models import Vehiculo, Cliente   # ajusta si están en otra app
-from servicios.models import Servicio          # idem
-
+from empresa.models import Cliente, Vehiculo
 from notificaciones.utils import send_webpush_to_empresa
+from servicios.models import Servicio
+
+from .forms import RutaForm
+from .models import CierreRuta, MovimientoCaja, Ruta
+from .services import calcular_cierre_ruta, cerrar_ruta
 
 
-import csv
-
-
-# === helpers de rol ===
 def is_gerente(user):
-    role = getattr(getattr(user, 'userprofile', None), 'rol', '')
-    return user.is_superuser or user.is_staff or role == 'GERENTE'
+    role = getattr(getattr(user, "userprofile", None), "rol", "")
+    return user.is_superuser or user.is_staff or role == "GERENTE"
 
 
 def is_conductor(user):
-    role = getattr(getattr(user, 'userprofile', None), 'rol', '')
-    return role == 'CONDUCTOR' or user.groups.filter(name__iexact='Conductor').exists()
+    role = getattr(getattr(user, "userprofile", None), "rol", "")
+    return role == "CONDUCTOR" and not (user.is_staff or user.is_superuser)
 
 
-# ===== Listado =====
-@method_decorator(login_required, name='dispatch')
+def _empresa_or_404():
+    empresa = get_current_empresa()
+    if empresa is None:
+        raise Http404("No hay empresa activa.")
+    return empresa
+
+
+def _ruta_qs():
+    empresa = _empresa_or_404()
+    return Ruta.objects.filter(empresa=empresa).select_related("vehiculo", "conductor", "empresa")
+
+
+def _ruta_autorizada(pk, user, *, gerente_only=False):
+    ruta = get_object_or_404(_ruta_qs(), pk=pk)
+    if gerente_only and not is_gerente(user):
+        return None
+    if is_conductor(user) and ruta.conductor_id != user.id:
+        return None
+    return ruta
+
+
+def _parse_positive_int(value):
+    try:
+        parsed = int(value or "0")
+    except (TypeError, ValueError):
+        return 0
+    return parsed if parsed > 0 else 0
+
+
+def _safe_export(value):
+    if value is None:
+        return ""
+    if isinstance(value, str) and value[:1] in ("=", "+", "-", "@"):
+        return "'" + value
+    return value
+
+
+def _xls(value):
+    value = _safe_export(value)
+    if value is None:
+        return ""
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, Decimal):
+        return float(value)
+    if isinstance(value, datetime):
+        if timezone.is_aware(value):
+            value = timezone.localtime(value)
+        return value.replace(tzinfo=None)
+    if isinstance(value, time):
+        return value.replace(tzinfo=None)
+    if isinstance(value, date):
+        return value
+    return str(value)
+
+
+def _money_fmt(cell):
+    cell.number_format = u'[$$-409] #,##0'
+    return cell
+
+
+def _auto_fit(ws):
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            max_len = max(max_len, len("" if cell.value is None else str(cell.value)))
+        ws.column_dimensions[col_letter].width = min(max(10, max_len + 2), 45)
+
+
+def _cierre_para_ruta(ruta, user=None):
+    return CierreRuta.objects.filter(ruta=ruta, empresa=ruta.empresa).first() or calcular_cierre_ruta(ruta, user)
+
+
+def _cierre_context(ruta, cierre):
+    servicios = ruta.servicios.select_related("cliente").prefetch_related("comentarios").order_by("orden", "id")
+    servicios_list = list(servicios)
+    total_venta = sum((s.valor or 0) for s in servicios_list)
+    total_cobrado = int(getattr(cierre, "total_cobrado", 0) or 0)
+    pendiente_cobro = int(getattr(cierre, "total_pendiente", 0) or 0)
+    base_efectivo = int(ruta.base_efectivo or 0)
+    total_ingresos = int(getattr(cierre, "total_ingresos", 0) or 0)
+    total_gastos = int(getattr(cierre, "total_gastos", 0) or 0)
+    ingresos_en_ruta = max(total_ingresos - base_efectivo, 0)
+    efectivo_entregar = base_efectivo + ingresos_en_ruta - total_gastos
+    utilidad_operativa = total_venta - total_gastos
+    return {
+        "ruta": ruta,
+        "cierre": cierre,
+        "servicios": servicios_list,
+        "total_venta": total_venta,
+        "total_cobrado": total_cobrado,
+        "pendiente_cobro": pendiente_cobro,
+        "base_efectivo": base_efectivo,
+        "ingresos_en_ruta": ingresos_en_ruta,
+        "total_gastos": total_gastos,
+        "efectivo_entregar": efectivo_entregar,
+        "utilidad_operativa": utilidad_operativa,
+    }
+
+
+@method_decorator(login_required, name="dispatch")
 class RutasListView(ListView):
-        model = Ruta
-        template_name = 'rutas/list.html'
-        context_object_name = 'rutas'
-        paginate_by = 25
-
-        def get_queryset(self):
-            emp = get_current_empresa()
-            qs = (Ruta.objects
-                .filter(empresa=emp)
-                .select_related('vehiculo', 'conductor'))
-
-            # Conductor: solo sus rutas activas (como ya lo tienes)
-            if is_conductor(self.request.user):
-                qs = qs.filter(conductor=self.request.user, estado='ACTIVA')
-
-            GET = self.request.GET
-
-            # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-            # Nuevo: para GERENTE/STAFF/SUPER, permitir ?activas=1 (solo activas)
-            # y opcionalmente ?cerradas=1 (solo cerradas). No afecta a conductores,
-            # porque arriba ya se forzó ACTIVA.
-            if not is_conductor(self.request.user):
-                if GET.get('activas') == '1':
-                    qs = qs.filter(estado='ACTIVA')
-                elif GET.get('cerradas') == '1':
-                    # si usas otro estado como 'CERRADA' o 'FINALIZADA', ajusta aquí
-                    qs = qs.filter(estado='CERRADA')
-            # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-
-            # ---- Rango de fechas (YYYY-MM-DD) ----
-            desde = (GET.get('desde') or '').strip() or None
-            hasta = (GET.get('hasta') or '').strip() or None
-            if desde:
-                qs = qs.filter(fecha_salida__date__gte=desde)
-            if hasta:
-                qs = qs.filter(fecha_salida__date__lte=hasta)
-
-            # ---- Multi-select de vehículos (ids) ----
-            vehiculos_ids = [v for v in GET.getlist('vehiculos') if v]
-            if vehiculos_ids:
-                qs = qs.filter(vehiculo_id__in=vehiculos_ids)
-
-            # ---- Multi-select de clientes (ids) a través de servicios ----
-            clientes_ids = [c for c in GET.getlist('clientes') if c]
-            if clientes_ids:
-                qs = qs.filter(servicios__cliente_id__in=clientes_ids)
-
-            # ---- Buscador global ----
-            q = (GET.get('q') or '').strip()
-            if q:
-                base = (
-                    Q(nombre__icontains=q) |
-                    Q(vehiculo__placa__icontains=q) |
-                    Q(conductor__username__icontains=q) |
-                    Q(conductor__first_name__icontains=q) |
-                    Q(conductor__last_name__icontains=q) |
-                    Q(estado__icontains=q)
-                )
-                if q.isdigit():
-                    base |= Q(id=int(q))
-
-                qs = qs.filter(
-                    base |
-                    Q(servicios__cliente__nombre__icontains=q) |
-                    Q(servicios__origen__icontains=q) |
-                    Q(servicios__destino__icontains=q)
-                )
-
-            return qs.distinct().order_by('-created_at')
-
-
-
-# ===== Hoja de ruta (detalle) =====
-@method_decorator(login_required, name='dispatch')
-class RutaDetailView(DetailView):
     model = Ruta
-    template_name = 'rutas/detail.html'
-    context_object_name = 'ruta'
+    template_name = "rutas/list.html"
+    context_object_name = "rutas"
+    paginate_by = 25
 
     def get_queryset(self):
-        emp = get_current_empresa()
-        qs = Ruta.objects.filter(empresa=emp).select_related('vehiculo', 'conductor')
+        qs = _ruta_qs()
+        if is_conductor(self.request.user):
+            qs = qs.filter(conductor=self.request.user, estado="ACTIVA")
+
+        params = self.request.GET
+        if not is_conductor(self.request.user):
+            if params.get("activas") == "1":
+                qs = qs.filter(estado="ACTIVA")
+            elif params.get("cerradas") == "1":
+                qs = qs.filter(estado="CERRADA")
+
+        desde = (params.get("desde") or "").strip()
+        hasta = (params.get("hasta") or "").strip()
+        if desde:
+            qs = qs.filter(fecha_salida__gte=desde)
+        if hasta:
+            qs = qs.filter(fecha_salida__lte=hasta)
+
+        vehiculos_ids = [v for v in params.getlist("vehiculos") if v]
+        if vehiculos_ids:
+            qs = qs.filter(vehiculo_id__in=vehiculos_ids)
+
+        clientes_ids = [c for c in params.getlist("clientes") if c]
+        if clientes_ids:
+            qs = qs.filter(servicios__cliente_id__in=clientes_ids)
+
+        q = (params.get("q") or "").strip()
+        if q:
+            base = (
+                Q(nombre__icontains=q)
+                | Q(vehiculo__placa__icontains=q)
+                | Q(conductor__username__icontains=q)
+                | Q(conductor__first_name__icontains=q)
+                | Q(conductor__last_name__icontains=q)
+                | Q(estado__icontains=q)
+            )
+            if q.isdigit():
+                base |= Q(id=int(q))
+            qs = qs.filter(
+                base
+                | Q(servicios__cliente__nombre__icontains=q)
+                | Q(servicios__origen__icontains=q)
+                | Q(servicios__destino__icontains=q)
+            )
+
+        return qs.distinct().order_by("-created_at")
+
+    def get_context_data(self, **kwargs):
+        ctx = super().get_context_data(**kwargs)
+        ctx["es_gerente"] = is_gerente(self.request.user)
+        ctx["es_conductor"] = is_conductor(self.request.user)
+        return ctx
+
+
+@method_decorator(login_required, name="dispatch")
+class RutaDetailView(DetailView):
+    model = Ruta
+    template_name = "rutas/detail.html"
+    context_object_name = "ruta"
+
+    def get_queryset(self):
+        qs = _ruta_qs()
         if is_conductor(self.request.user):
             qs = qs.filter(conductor=self.request.user)
         return qs
 
     def dispatch(self, request, *args, **kwargs):
         self.object = self.get_object()
-        # Conductor no puede ver rutas cerradas
-        if is_conductor(request.user) and self.object.estado != 'ACTIVA':
-            messages.warning(request, 'Esta ruta ya fue cerrada.')
-            return redirect('rutas:list')
+        if is_conductor(request.user) and self.object.estado != "ACTIVA":
+            messages.warning(request, "Esta ruta ya fue cerrada.")
+            return redirect("rutas:list")
         return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ruta = self.object
-        servicios = ruta.servicios.select_related('cliente').order_by('orden', 'id')
+        servicios = ruta.servicios.select_related("cliente").order_by("orden", "id")
+        servicios_list = list(servicios)
+        movs = ruta.movimientos.all().order_by("-timestamp")
+        movs_list = list(movs)
 
-
-        tot_servicios = servicios.count()
-        valor_total = sum(s.valor for s in servicios)
-        total_cobrado = sum(s.valor for s in servicios if s.estado_pago == 'PAG')
-        total_pendiente = sum(getattr(s, 'saldo_cartera', 0) for s in servicios)
-
-        movs = ruta.movimientos.all().order_by('-timestamp')
-        total_gastos = sum(m.valor for m in movs if m.tipo == 'GASTO')
-        total_ingresos = ruta.base_efectivo + sum(m.valor for m in movs if m.tipo == 'INGRESO')
+        valor_total = sum(s.valor for s in servicios_list)
+        total_cobrado = sum(s.anticipo for s in servicios_list)
+        total_pendiente = sum(s.saldo_cartera for s in servicios_list)
+        total_gastos = sum(m.valor for m in movs_list if m.tipo == "GASTO")
+        total_ingresos = int(ruta.base_efectivo or 0) + sum(m.valor for m in movs_list if m.tipo == "INGRESO")
         disponible = total_ingresos - total_gastos
-        utilidad_neta = total_cobrado - total_gastos
 
-        # 👉 nuevo: ingresos sin base
-        base = ruta.base_efectivo or 0
-        ingresos_sin_base = (total_ingresos or 0) - base
-
-        ctx.update({
-            'servicios': servicios,
-            'movimientos': movs,
-            'tot_servicios': tot_servicios,
-            'valor_total': valor_total,
-            'total_cobrado': total_cobrado,
-            'total_pendiente': total_pendiente,
-            'total_gastos': total_gastos,
-            'total_ingresos': total_ingresos,
-            'disponible': disponible,
-            'utilidad_neta': utilidad_neta,
-            'ingresos_sin_base': ingresos_sin_base,   # ← aquí
-            'es_gerente': is_gerente(self.request.user),
-            'es_conductor': is_conductor(self.request.user),
-            'add_servicio_url': reverse('servicios:crear') + f'?ruta={ruta.pk}',
-        })
+        ctx.update(
+            {
+                "servicios": servicios_list,
+                "movimientos": movs_list,
+                "tot_servicios": len(servicios_list),
+                "valor_total": valor_total,
+                "total_cobrado": total_cobrado,
+                "total_pendiente": total_pendiente,
+                "total_gastos": total_gastos,
+                "total_ingresos": total_ingresos,
+                "disponible": disponible,
+                "utilidad_neta": total_cobrado - total_gastos,
+                "ingresos_sin_base": max(total_ingresos - int(ruta.base_efectivo or 0), 0),
+                "es_gerente": is_gerente(self.request.user),
+                "es_conductor": is_conductor(self.request.user) and ruta.conductor_id == self.request.user.id,
+                "add_servicio_url": reverse("servicios:crear") + f"?ruta={ruta.pk}",
+            }
+        )
         return ctx
 
 
-
-# ===== Crear / Borrar / Cerrar =====
 @login_required
 @user_passes_test(is_gerente)
 def crear_ruta(request):
-    if request.method == 'POST':
+    if get_current_empresa() is None:
+        return HttpResponseForbidden("No hay empresa activa.")
+    if request.method == "POST":
         form = RutaForm(request.POST)
         if form.is_valid():
             ruta = form.save()
-            messages.success(request, f'Ruta #{ruta.pk} creada.')
-            return redirect('servicios:por_ruta', ruta_id=ruta.pk)
+            messages.success(request, f"Ruta #{ruta.pk} creada.")
+            return redirect("servicios:por_ruta", ruta_id=ruta.pk)
     else:
         form = RutaForm()
-    return render(request, 'rutas/crear_ruta.html', {'form': form})
+    return render(request, "rutas/crear_ruta.html", {"form": form})
 
 
 @login_required
 @user_passes_test(is_gerente)
+@require_POST
 def borrar_ruta(request, pk):
-    ruta = get_object_or_404(Ruta, pk=pk, empresa=get_current_empresa())
-    if ruta.estado != 'ACTIVA':
-        messages.error(request, 'No puedes borrar una ruta cerrada.')
-        return redirect('rutas:hoja', pk=ruta.pk)
+    ruta = _ruta_autorizada(pk, request.user, gerente_only=True)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    if ruta.estado != "ACTIVA":
+        messages.error(request, "No puedes borrar una ruta cerrada.")
+        return redirect("rutas:hoja", pk=ruta.pk)
     ruta.delete()
-    messages.success(request, 'Ruta eliminada.')
-    return redirect('rutas:list')
+    messages.success(request, "Ruta eliminada.")
+    return redirect("rutas:list")
 
 
 @login_required
+@user_passes_test(is_gerente)
+@require_POST
 def cerrar_ruta_view(request, pk):
-    ruta = get_object_or_404(Ruta, pk=pk)
-
-    # ... tus permisos aquí ...
-
-    if request.method != 'POST':
-        messages.info(request, 'Confirma el cierre desde la Hoja de ruta.')
-        return redirect('rutas:hoja', pk=ruta.pk)
-
-    # ... validación de servicios pendientes ...
-
+    ruta = _ruta_autorizada(pk, request.user, gerente_only=True)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
     try:
         cierre = cerrar_ruta(ruta, request.user)
-    except ValueError as e:
-        messages.error(request, f"No se pudo cerrar la ruta: {e}")
-        return redirect('rutas:hoja', pk=ruta.pk)
+    except ValueError as exc:
+        messages.error(request, f"No se pudo cerrar la ruta: {exc}")
+        return redirect("rutas:hoja", pk=ruta.pk)
     except IntegrityError:
-        messages.error(request, "No se pudo cerrar la ruta (integridad de datos).")
-        return redirect('rutas:hoja', pk=ruta.pk)
+        messages.error(request, "No se pudo cerrar la ruta por integridad de datos.")
+        return redirect("rutas:hoja", pk=ruta.pk)
+    messages.success(request, f"Ruta #{ruta.pk} cerrada.")
+    return redirect("rutas:cierre_resumen", ruta_id=cierre.ruta_id)
 
-    messages.success(request, f'Ruta #{ruta.pk} cerrada.')
-    return redirect('rutas:cierre_resumen', ruta_id=ruta.pk)
 
-
-# ===== Movimientos de caja =====
 @login_required
+@require_POST
 def agregar_gasto(request, pk):
-    ruta = get_object_or_404(Ruta, pk=pk, empresa=get_current_empresa())
-    if is_conductor(request.user):
-        if ruta.conductor_id != request.user.id or ruta.estado != 'ACTIVA':
-            return HttpResponseForbidden('No autorizado')
-    if request.method == 'POST':
-        concepto = (request.POST.get('concepto') or '').strip()
-        valor = int(request.POST.get('valor') or '0')
-        if valor <= 0:
-            messages.error(request, 'El valor debe ser positivo.')
-        else:
-            MovimientoCaja.objects.create(
-                empresa=ruta.empresa, ruta=ruta, tipo='GASTO',
-                concepto=concepto or 'Gasto', valor=valor, usuario=request.user
-            )
-            messages.success(request, 'Gasto registrado.')
-    return redirect('rutas:hoja', pk=ruta.id)
-
-
-@login_required
-def agregar_ingreso_extra(request, pk):
-    ruta = get_object_or_404(Ruta, pk=pk, empresa=get_current_empresa())
-    if is_conductor(request.user):
-        if ruta.conductor_id != request.user.id or ruta.estado != 'ACTIVA':
-            return HttpResponseForbidden('No autorizado')
-    if request.method == 'POST':
-        concepto = (request.POST.get('concepto') or '').strip()
-        valor = int(request.POST.get('valor') or '0')
-        if valor <= 0:
-            messages.error(request, 'El valor debe ser positivo.')
-        else:
-            MovimientoCaja.objects.create(
-                empresa=ruta.empresa, ruta=ruta, tipo='INGRESO',
-                concepto=concepto or 'Ingreso extra', valor=valor, usuario=request.user
-            )
-            messages.success(request, 'Ingreso registrado.')
-    return redirect('rutas:hoja', pk=ruta.id)
-
-
-# rutas/views.py
-from django.shortcuts import render, get_object_or_404
-from django.contrib.auth.decorators import login_required
-
-from .models import Ruta
-from .logic import cerrar_ruta  # ya existente
-
-@login_required
-def cierre_resumen(request, ruta_id: int):
-    ruta = get_object_or_404(Ruta, id=ruta_id)
-    cierre = cerrar_ruta(ruta, request.user)
-
-    servicios = (
-        ruta.servicios.select_related('cliente')
-        .all().order_by('id')
-    )
-
-    # Ventas
-    total_venta = sum((s.valor or 0) for s in servicios)
-
-    # Cobros
-    total_cobrado = cierre.total_cobrado or 0
-    pendiente_cobro = max(total_venta - total_cobrado, 0)
-
-    # Caja
-    base_efectivo   = ruta.base_efectivo or 0
-    total_ingresos  = cierre.total_ingresos or 0   # puede o no traer la base incluida
-    total_gastos    = cierre.total_gastos or 0
-
-    # Quita la base si viene incluida; si no hay dato fiable, usa lo cobrado
-    ingresos_en_ruta_calc = total_ingresos - base_efectivo
-    if ingresos_en_ruta_calc > 0:
-        ingresos_en_ruta_final = ingresos_en_ruta_calc
+    ruta = _ruta_autorizada(pk, request.user)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    if ruta.estado != "ACTIVA":
+        messages.error(request, "La ruta esta cerrada.")
+        return redirect("rutas:hoja", pk=pk)
+    valor = _parse_positive_int(request.POST.get("valor"))
+    concepto = (request.POST.get("concepto") or "").strip()
+    if not valor:
+        messages.error(request, "El valor debe ser positivo.")
     else:
-        ingresos_en_ruta_final = total_cobrado  # fallback consistente con lo que ves en UI
+        MovimientoCaja.objects.create(
+            empresa=ruta.empresa,
+            ruta=ruta,
+            tipo="GASTO",
+            concepto=concepto or "Gasto",
+            valor=valor,
+            usuario=request.user,
+        )
+        messages.success(request, "Gasto registrado.")
+    return redirect("rutas:hoja", pk=ruta.id)
 
-    # Efectivo a entregar (CONSISTENTE con lo mostrado)
-    efectivo_entregar = base_efectivo + ingresos_en_ruta_final - total_gastos
 
-    # Utilidad operativa
-    utilidad_operativa = total_venta - total_gastos
+@login_required
+@require_POST
+def agregar_ingreso_extra(request, pk):
+    ruta = _ruta_autorizada(pk, request.user)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    if ruta.estado != "ACTIVA":
+        messages.error(request, "La ruta esta cerrada.")
+        return redirect("rutas:hoja", pk=pk)
+    valor = _parse_positive_int(request.POST.get("valor"))
+    concepto = (request.POST.get("concepto") or "").strip()
+    if not valor:
+        messages.error(request, "El valor debe ser positivo.")
+    else:
+        MovimientoCaja.objects.create(
+            empresa=ruta.empresa,
+            ruta=ruta,
+            tipo="INGRESO",
+            concepto=concepto or "Ingreso extra",
+            valor=valor,
+            usuario=request.user,
+        )
+        messages.success(request, "Ingreso registrado.")
+    return redirect("rutas:hoja", pk=ruta.id)
 
-    context = {
-        'ruta': ruta,
-        'cierre': cierre,
-        'servicios': servicios,
 
-        'total_venta': total_venta,
-        'total_cobrado': total_cobrado,
-        'pendiente_cobro': pendiente_cobro,
-
-        'base_efectivo': base_efectivo,
-        'ingresos_en_ruta': ingresos_en_ruta_final,  # << usa SIEMPRE este
-        'total_gastos': total_gastos,
-        'efectivo_entregar': efectivo_entregar,
-        'utilidad_operativa': utilidad_operativa,
-    }
-    return render(request, 'rutas/cierre_resumen.html', context)
-
+@login_required
+@user_passes_test(is_gerente)
+def cierre_resumen(request, ruta_id: int):
+    ruta = _ruta_autorizada(ruta_id, request.user, gerente_only=True)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    cierre = _cierre_para_ruta(ruta, request.user)
+    return render(request, "rutas/cierre_resumen.html", _cierre_context(ruta, cierre))
 
 
 @login_required
 def recorrido_ruta_view(request, ruta_id: int):
-    """Muestra un mapa (Leaflet) con el recorrido aproximado:
-       puntos de recogida/entrega ordenados por timestamp, unidos por polilínea."""
-    ruta = get_object_or_404(Ruta, id=ruta_id)
-
-    servicios = (
-        ruta.servicios
-        .all()
-        .order_by('id')
-    )
+    ruta = _ruta_autorizada(ruta_id, request.user)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
 
     puntos = []
-    for s in servicios:
-        if s.recogido_en and s.lat_recogida and s.lon_recogida:
-            puntos.append({
-                "ts": s.recogido_en.isoformat(),
-                "lat": float(s.lat_recogida),
-                "lon": float(s.lon_recogida),
-                "tipo": "recogida",
-                "label": f"Recogida — Serv #{s.id}",
-            })
-        if s.entregado_en and s.lat_entrega and s.lon_entrega:
-            puntos.append({
-                "ts": s.entregado_en.isoformat(),
-                "lat": float(s.lat_entrega),
-                "lon": float(s.lon_entrega),
-                "tipo": "entrega",
-                "label": f"Entrega — Serv #{s.id}",
-            })
+    for servicio in ruta.servicios.all().order_by("orden", "id"):
+        if servicio.recogido_en and servicio.lat_recogida is not None and servicio.lon_recogida is not None:
+            puntos.append(
+                {
+                    "ts": servicio.recogido_en.isoformat(),
+                    "lat": float(servicio.lat_recogida),
+                    "lon": float(servicio.lon_recogida),
+                    "tipo": "recogida",
+                    "label": f"Recogida - Serv #{servicio.id}",
+                }
+            )
+        if servicio.entregado_en and servicio.lat_entrega is not None and servicio.lon_entrega is not None:
+            puntos.append(
+                {
+                    "ts": servicio.entregado_en.isoformat(),
+                    "lat": float(servicio.lat_entrega),
+                    "lon": float(servicio.lon_entrega),
+                    "tipo": "entrega",
+                    "label": f"Entrega - Serv #{servicio.id}",
+                }
+            )
 
     puntos.sort(key=lambda p: p["ts"])
-    puntos_json = mark_safe(json.dumps(puntos))  # seguro para insertar en JS
-
-    return render(request, 'rutas/recorrido.html', {
-        'ruta': ruta,
-        'puntos_json': puntos_json,
-    })
+    return render(request, "rutas/recorrido.html", {"ruta": ruta, "puntos_json": mark_safe(json.dumps(puntos))})
 
 
 @login_required
+@user_passes_test(is_gerente)
 def exportar_cierre_csv(request, ruta_id: int):
-    ruta = get_object_or_404(Ruta, id=ruta_id)
-    cierre = CierreRuta.objects.filter(ruta=ruta).first() or cerrar_ruta(ruta, request.user)
-    servicios = ruta.servicios.select_related('cliente').all().order_by('id')
+    ruta = _ruta_autorizada(ruta_id, request.user, gerente_only=True)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    cierre = _cierre_para_ruta(ruta, request.user)
+    servicios = ruta.servicios.select_related("cliente").order_by("orden", "id")
 
-    response = HttpResponse(content_type='text/csv; charset=utf-8')
-    response['Content-Disposition'] = f'attachment; filename="cierre_ruta_{ruta.id}.csv"'
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="cierre_ruta_{ruta.id}.csv"'
     writer = csv.writer(response)
-
     writer.writerow(["Resumen de Cierre"])
-    writer.writerow(["Ruta", str(ruta)])
+    writer.writerow(["Ruta", _safe_export(str(ruta))])
     writer.writerow(["Total servicios", cierre.total_servicios])
     writer.writerow(["Cobrado", cierre.total_cobrado])
     writer.writerow(["Pendiente", cierre.total_pendiente])
@@ -389,220 +431,150 @@ def exportar_cierre_csv(request, ruta_id: int):
     writer.writerow(["Gastos", cierre.total_gastos])
     writer.writerow(["Utilidad neta", cierre.utilidad_neta])
     writer.writerow([])
-
-    writer.writerow(["Detalle de servicios"])
-    writer.writerow(["ID", "Cliente", "Origen", "Destino", "Valor", "Estado pago"])
-    for s in servicios:
-        writer.writerow([
-            s.id,
-            getattr(s.cliente, "nombre", ""),
-            s.origen,
-            s.destino,
-            s.valor,
-            s.get_estado_pago_display() if hasattr(s, 'get_estado_pago_display') else s.estado_pago
-        ])
-
+    writer.writerow(["ID", "Cliente", "Origen", "Destino", "Valor", "Anticipo", "Saldo", "Estado pago"])
+    for servicio in servicios:
+        writer.writerow(
+            [
+                servicio.id,
+                _safe_export(getattr(servicio.cliente, "nombre", "")),
+                _safe_export(servicio.origen),
+                _safe_export(servicio.destino),
+                servicio.valor,
+                servicio.anticipo,
+                servicio.saldo_cartera,
+                _safe_export(servicio.get_estado_pago_display()),
+            ]
+        )
     return response
 
 
-# === EXCEL EXPORT (openpyxl) ===
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
-from django.http import HttpResponse
-from django.utils import timezone
-from datetime import date, datetime, time
-from decimal import Decimal
-
-# ----------------- helpers -----------------
-def xls(v):
-    """
-    Normaliza valores a tipos aceptados por openpyxl.
-    - Convierte Decimal -> float
-    - Convierte datetime/time aware -> naive (sin tz) en hora local
-    - Cualquier objeto no soportado -> str
-    """
-    if v is None:
-        return ""
-    if isinstance(v, (int, float)):
-        return v
-    if isinstance(v, Decimal):
-        return float(v)
-    if isinstance(v, datetime):
-        if timezone.is_aware(v):
-            v = timezone.localtime(v)
-        return v.replace(tzinfo=None)
-    if isinstance(v, time):
-        return v.replace(tzinfo=None)
-    if isinstance(v, date):
-        return v
-    return str(v)
-
-def _money_fmt(cell):
-    cell.number_format = u'[$$-409] #,##0'
-    return cell
-
-def _auto_fit(ws):
-    for col in ws.columns:
-        max_len = 0
-        col_letter = get_column_letter(col[0].column)
-        for c in col:
-            v = "" if c.value is None else str(c.value)
-            max_len = max(max_len, len(v))
-        ws.column_dimensions[col_letter].width = min(max(10, max_len + 2), 45)
-
-# ----------------- view -----------------
 @login_required
+@user_passes_test(is_gerente)
 def exportar_cierre_xlsx(request, ruta_id: int):
-    ruta = get_object_or_404(Ruta, id=ruta_id)
-    cierre = CierreRuta.objects.filter(ruta=ruta).first() or cerrar_ruta(ruta, request.user)
-    servicios = ruta.servicios.select_related('cliente').all().order_by('id')
+    ruta = _ruta_autorizada(ruta_id, request.user, gerente_only=True)
+    if ruta is None:
+        return HttpResponseForbidden("No autorizado")
+    cierre = _cierre_para_ruta(ruta, request.user)
+    ctx = _cierre_context(ruta, cierre)
+    servicios = ctx["servicios"]
 
-    # ===== métricas (coherentes con la vista) =====
-    total_venta = sum((s.valor or 0) for s in servicios)
-    total_cobrado = cierre.total_cobrado or 0
-    pendiente_cobro = max(total_venta - total_cobrado, 0)
-
-    base_efectivo  = ruta.base_efectivo or 0
-    total_ingresos = cierre.total_ingresos or 0
-    total_gastos   = cierre.total_gastos or 0
-
-    # Ingresos en ruta (quita base; si no hay dato fiable, usa cobrado)
-    ingresos_en_ruta_calc = total_ingresos - base_efectivo
-    ingresos_en_ruta = ingresos_en_ruta_calc if ingresos_en_ruta_calc > 0 else total_cobrado
-
-    # Efectivo a entregar (lo mismo que muestras en UI)
-    efectivo_entregar = base_efectivo + ingresos_en_ruta - total_gastos
-
-    utilidad_operativa = total_venta - total_gastos
-
-    # ===== estilos =====
-    COLOR_PRIMARY = "1F2A5A"
-    COLOR_LINE    = "E6E8F0"
-    COLOR_OK      = "236A3B"
-    COLOR_WARN    = "8A1A1A"
-    header_fill   = PatternFill("solid", fgColor=COLOR_PRIMARY)
-    header_font   = Font(color="FFFFFF", bold=True)
-    subhead_font  = Font(color=COLOR_PRIMARY, bold=True)
-    bold          = Font(bold=True)
-    center        = Alignment(horizontal="center", vertical="center")
-    right         = Alignment(horizontal="right",  vertical="center")
-    thin_border   = Border(left=Side(style="thin", color=COLOR_LINE),
-                           right=Side(style="thin", color=COLOR_LINE),
-                           top=Side(style="thin", color=COLOR_LINE),
-                           bottom=Side(style="thin", color=COLOR_LINE))
+    header_fill = PatternFill("solid", fgColor="1F2A5A")
+    header_font = Font(color="FFFFFF", bold=True)
+    subhead_font = Font(color="1F2A5A", bold=True)
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+    right = Alignment(horizontal="right", vertical="center")
+    thin_border = Border(
+        left=Side(style="thin", color="E6E8F0"),
+        right=Side(style="thin", color="E6E8F0"),
+        top=Side(style="thin", color="E6E8F0"),
+        bottom=Side(style="thin", color="E6E8F0"),
+    )
 
     wb = Workbook()
-
-    # ===== Hoja 1: Resumen =====
     ws = wb.active
     ws.title = "Resumen"
-
     ws.merge_cells("A1:F1")
-    ws["A1"] = f"Cierre de ruta — {ruta.nombre or '(sin nombre)'}  #{ruta.id}"
+    ws["A1"] = _xls(f"Cierre de ruta - {ruta.nombre or '(sin nombre)'} #{ruta.id}")
     ws["A1"].fill = header_fill
     ws["A1"].font = Font(color="FFFFFF", bold=True, size=14)
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    ws["A3"] = "Estado";     ws["B3"] = xls((ruta.estado or "").title())
-    ws["A4"] = "Vehículo";   ws["B4"] = xls(getattr(ruta.vehiculo, "placa", ruta.vehiculo))
-    ws["A5"] = "Conductor";  ws["B5"] = xls(getattr(ruta.conductor, "username", ruta.conductor))
-    ws["A6"] = "Salida";     ws["B6"] = xls(ruta.fecha_salida)
-    ws["B6"].number_format = "yyyy-mm-dd hh:mm"
-    for r in range(3, 7):
-        ws[f"A{r}"].font = bold
+    resumen = [
+        ("Estado", (ruta.estado or "").title()),
+        ("Vehiculo", getattr(ruta.vehiculo, "placa", ruta.vehiculo)),
+        ("Conductor", getattr(ruta.conductor, "username", ruta.conductor)),
+        ("Salida", ruta.fecha_salida),
+    ]
+    for row, (label, value) in enumerate(resumen, start=3):
+        ws[f"A{row}"] = label
+        ws[f"A{row}"].font = bold
+        ws[f"B{row}"] = _xls(value)
 
-    ws["D3"] = "Valor total de servicios (venta)"; ws["E3"] = xls(total_venta);        _money_fmt(ws["E3"])
-    ws["D4"] = "Cobrado (total)";                  ws["E4"] = xls(total_cobrado);      _money_fmt(ws["E4"])
-    ws["D5"] = "Pendiente por cobrar";             ws["E5"] = xls(pendiente_cobro);    _money_fmt(ws["E5"])
-    ws["D6"] = "Utilidad operativa";               ws["E6"] = xls(utilidad_operativa); _money_fmt(ws["E6"])
-    for cell in ("D3","D4","D5","D6"):
-        ws[cell].font = subhead_font
+    metrics = [
+        ("Valor total de servicios", ctx["total_venta"]),
+        ("Cobrado total", ctx["total_cobrado"]),
+        ("Pendiente por cobrar", ctx["pendiente_cobro"]),
+        ("Utilidad operativa", ctx["utilidad_operativa"]),
+    ]
+    for row, (label, value) in enumerate(metrics, start=3):
+        ws[f"D{row}"] = label
+        ws[f"D{row}"].font = subhead_font
+        ws[f"E{row}"] = _xls(value)
+        _money_fmt(ws[f"E{row}"])
 
-    ws["A8"] = "Caja de ruta"; ws["A8"].font = subhead_font
-    ws.append(["", "Base",               xls(base_efectivo)]);       _money_fmt(ws.cell(row=9,  column=3))
-    ws.append(["", "Ingresos en ruta",   xls(ingresos_en_ruta)]);    _money_fmt(ws.cell(row=10, column=3))
-    ws.append(["", "Gastos",             xls(-abs(total_gastos))]);  _money_fmt(ws.cell(row=11, column=3))
-    ws.append(["", "Efectivo a entregar",xls(efectivo_entregar)]);   _money_fmt(ws.cell(row=12, column=3))
-
-    for r in range(9, 13):
-        for c in range(2, 3+1):
-            ws.cell(row=r, column=c).border = thin_border
-            if c == 2: ws.cell(row=r, column=c).font = bold
-            if c == 3: ws.cell(row=r, column=c).alignment = right
-
-    ws["C9"].font  = Font(color=COLOR_OK, bold=True)
-    ws["C10"].font = Font(color=COLOR_OK, bold=True)
-    ws["C11"].font = Font(color=COLOR_WARN, bold=True)
-    ws["C12"].font = Font(bold=True)
-
+    ws["A8"] = "Caja de ruta"
+    ws["A8"].font = subhead_font
+    for row, (label, value) in enumerate(
+        [
+            ("Base", ctx["base_efectivo"]),
+            ("Ingresos en ruta", ctx["ingresos_en_ruta"]),
+            ("Gastos", -abs(ctx["total_gastos"])),
+            ("Efectivo a entregar", ctx["efectivo_entregar"]),
+        ],
+        start=9,
+    ):
+        ws.cell(row=row, column=2, value=label).font = bold
+        ws.cell(row=row, column=3, value=_xls(value))
+        _money_fmt(ws.cell(row=row, column=3)).alignment = right
+        for col in range(2, 4):
+            ws.cell(row=row, column=col).border = thin_border
     _auto_fit(ws)
 
-    # ===== Hoja 2: Servicios =====
     ws2 = wb.create_sheet("Servicios")
-    headers = ["ID", "Cliente", "Origen", "Destino", "Valor", "Estado pago", "Recogido", "Entregado"]
+    headers = ["ID", "Cliente", "Origen", "Destino", "Valor", "Anticipo", "Saldo", "Estado", "Recogido", "Entregado"]
     ws2.append(headers)
-    for i, h in enumerate(headers, start=1):
-        cell = ws2.cell(row=1, column=i, value=h)
+    for idx, header in enumerate(headers, start=1):
+        cell = ws2.cell(row=1, column=idx, value=header)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = center
         cell.border = thin_border
 
-    for s in servicios:
-        row = [
-            xls(s.id),
-            xls(getattr(getattr(s, "cliente", None), "nombre", getattr(s, "cliente", "—"))),
-            xls(s.origen or "—"),
-            xls(s.destino or "—"),
-            xls(s.valor or 0),
-            xls(s.get_estado_pago_display() if hasattr(s, "get_estado_pago_display") else s.estado_pago),
-            xls(getattr(s, "recogido_en", None)),
-            xls(getattr(s, "entregado_en", None)),
-        ]
-        ws2.append(row)
+    for servicio in servicios:
+        ws2.append(
+            [
+                _xls(servicio.id),
+                _xls(getattr(servicio.cliente, "nombre", "")),
+                _xls(servicio.origen or "-"),
+                _xls(servicio.destino or "-"),
+                _xls(servicio.valor or 0),
+                _xls(servicio.anticipo or 0),
+                _xls(servicio.saldo_cartera),
+                _xls(servicio.get_estado_pago_display()),
+                _xls(servicio.recogido_en),
+                _xls(servicio.entregado_en),
+            ]
+        )
 
-    # formatos
-    for r in range(2, ws2.max_row + 1):
-        _money_fmt(ws2.cell(row=r, column=5)).alignment = right
-        ws2.cell(row=r, column=7).number_format = "yyyy-mm-dd hh:mm"
-        ws2.cell(row=r, column=8).number_format = "yyyy-mm-dd hh:mm"
-
-    for r in range(1, ws2.max_row + 1):
-        for c in range(1, ws2.max_column + 1):
-            ws2.cell(row=r, column=c).border = thin_border
-
+    for row in range(2, ws2.max_row + 1):
+        for col in (5, 6, 7):
+            _money_fmt(ws2.cell(row=row, column=col)).alignment = right
+        for col in (9, 10):
+            ws2.cell(row=row, column=col).number_format = "yyyy-mm-dd hh:mm"
+    for row in range(1, ws2.max_row + 1):
+        for col in range(1, ws2.max_column + 1):
+            ws2.cell(row=row, column=col).border = thin_border
     ws2.freeze_panes = "A2"
     ws2.auto_filter.ref = f"A1:{get_column_letter(ws2.max_column)}1"
     _auto_fit(ws2)
 
-    # ===== Hoja 3: Notas =====
     ws3 = wb.create_sheet("Notas")
-    ws3["A1"] = "Generado por"; ws3["B1"] = xls(request.user.get_username())
-    ws3["A2"] = "Fecha cierre"; ws3["B2"] = xls(getattr(cierre, "updated_at", None) or getattr(cierre, "created_at", None))
-    ws3["A3"] = "Empresa";     ws3["B3"] = xls(getattr(ruta.empresa, "nombre", str(ruta.empresa)))
-    ws3["B2"].number_format = "yyyy-mm-dd hh:mm"
-    ws3["A1"].font = Font(bold=True); ws3["A2"].font = Font(bold=True); ws3["A3"].font = Font(bold=True)
+    ws3["A1"] = "Generado por"
+    ws3["B1"] = _xls(request.user.get_username())
+    ws3["A2"] = "Empresa"
+    ws3["B2"] = _xls(getattr(ruta.empresa, "nombre", str(ruta.empresa)))
+    ws3["A3"] = "Nota"
+    ws3["B3"] = "Exportar no modifica el estado de la ruta."
+    for cell in ("A1", "A2", "A3"):
+        ws3[cell].font = bold
     _auto_fit(ws3)
 
-    # respuesta
-    filename = f"Cierre_ruta_{ruta.id}_{ruta.nombre}_{ruta.fecha_salida}.xlsx"
-    resp = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    wb.save(resp)
-    return resp
-
-
-# rutas/views.py
-import json
-from django.http import JsonResponse, HttpResponseBadRequest
-from django.views import View
-from django.db import transaction
-from django.shortcuts import get_object_or_404
-
-from .mixins import GerenteRequiredMixin, _es_gerente
-from .models import Ruta
-from servicios.models import Servicio
+    filename = f"Cierre_ruta_{ruta.id}_{ruta.fecha_salida}.xlsx"
+    response = HttpResponse(content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
 
 
 class ReordenarServiciosView(View):
@@ -612,64 +584,42 @@ class ReordenarServiciosView(View):
         if not is_gerente(request.user):
             return HttpResponseForbidden("Solo gerente")
 
-        # ---- Body JSON ----
+        ruta = _ruta_autorizada(ruta_id, request.user, gerente_only=True)
+        if ruta is None:
+            return HttpResponseForbidden("No autorizado")
+        if ruta.estado != "ACTIVA":
+            return HttpResponseBadRequest("No se puede reordenar una ruta cerrada")
+
         try:
             data = json.loads(request.body.decode("utf-8"))
         except json.JSONDecodeError:
-            return HttpResponseBadRequest("JSON inválido")
-
+            return HttpResponseBadRequest("JSON invalido")
         order = data if isinstance(data, list) else data.get("order")
-        if not isinstance(order, list) or not all(isinstance(x, int) for x in order):
-            return HttpResponseBadRequest("Formato de 'order' inválido")
+        if not isinstance(order, list) or not all(isinstance(item, int) for item in order):
+            return HttpResponseBadRequest("Formato de order invalido")
+        if len(order) != len(set(order)):
+            return HttpResponseBadRequest("IDs duplicados")
 
-        # ---- Ruta y servicios actuales ----
-        ruta = get_object_or_404(Ruta, pk=ruta_id)
-        servicios = list(Servicio.objects.filter(ruta_id=ruta.id).order_by("orden", "id"))
-
-        # ---- Validaciones ----
-        ids_ruta = {s.id for s in servicios}
+        servicios = list(Servicio.objects.filter(ruta=ruta).order_by("orden", "id"))
+        ids_ruta = {servicio.id for servicio in servicios}
         if set(order) != ids_ruta:
             return HttpResponseBadRequest("IDs no coinciden con la ruta")
 
-        # ---- Persistencia y notificación ----
-        by_id = {s.id: s for s in servicios}
+        by_id = {servicio.id: servicio for servicio in servicios}
         with transaction.atomic():
             for pos, sid in enumerate(order, start=1):
                 by_id[sid].orden = pos
             Servicio.objects.bulk_update(servicios, ["orden"])
-
-            # Notificación a toda la empresa (se enviará post-commit por on_commit en utils)
-            empresa = getattr(ruta, "empresa", None)
-            if not empresa:
-                try:
-                    from acarreapp.tenancy import get_current_empresa
-                    empresa = get_current_empresa()
-                except Exception:
-                    empresa = None
-
-            if empresa:
-                send_webpush_to_empresa(
-                    empresa,
-                    "↕️ Orden de ruta actualizado",
-                    f"Ruta #{ruta.id}: se modificó el orden de servicios.",
-                    {"url": f"/rutas/{ruta.id}/detalle/"},
-                    # exclude_user=request.user,  # descomenta si no quieres notificar al actor
-                )
-
+            send_webpush_to_empresa(
+                ruta.empresa,
+                "Orden de ruta actualizado",
+                f"Ruta #{ruta.id}: se modifico el orden de servicios.",
+                {"url": f"/rutas/{ruta.id}/hoja/"},
+                exclude_user=request.user,
+            )
         return JsonResponse({"ok": True})
 
 
 @login_required
 def por_ruta(request, ruta_id: int):
-    ruta = get_object_or_404(Ruta, pk=ruta_id)
-    servicios = (Servicio.objects
-                 .select_related('cliente')
-                 .filter(ruta=ruta)
-                 .order_by('orden', 'id'))
-
-    ctx = {
-        "ruta": ruta,
-        "servicios": list(servicios),
-        "es_gerente": is_gerente(request.user),  # <-- clave para mostrar el handle
-    }
-    return render(request, "servicios/por_ruta.html", ctx)
+    return redirect("servicios:por_ruta", ruta_id=ruta_id)

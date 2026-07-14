@@ -3,6 +3,13 @@ from django.db import models
 
 class PushSubscription(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="push_subs")
+    empresa = models.ForeignKey(
+        "empresa.Empresa",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="push_subscriptions",
+    )
     endpoint = models.URLField(unique=True)
     p256dh = models.CharField(max_length=255)
     auth = models.CharField(max_length=255)

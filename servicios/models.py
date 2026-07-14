@@ -4,6 +4,19 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
 from django.conf import settings
 
+
+def _coord(value, minimum, maximum):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    if minimum <= parsed <= maximum:
+        return parsed
+    return None
+
+
 class Servicio(models.Model):
     PENDIENTE = 'PEND'
     ANTICIPO = 'ANT'
@@ -92,15 +105,23 @@ class Servicio(models.Model):
         self.recogido = True
         if not self.recogido_en:
             self.recogido_en = timezone.now()
-        if lat is not None: self.lat_recogida = float(lat)
-        if lon is not None: self.lon_recogida = float(lon)
+        lat = _coord(lat, -90, 90)
+        lon = _coord(lon, -180, 180)
+        if lat is not None:
+            self.lat_recogida = lat
+        if lon is not None:
+            self.lon_recogida = lon
 
     def marcar_entregado(self, lat=None, lon=None):
         self.entregado = True
         if not self.entregado_en:
             self.entregado_en = timezone.now()
-        if lat is not None: self.lat_entrega = float(lat)
-        if lon is not None: self.lon_entrega = float(lon)
+        lat = _coord(lat, -90, 90)
+        lon = _coord(lon, -180, 180)
+        if lat is not None:
+            self.lat_entrega = lat
+        if lon is not None:
+            self.lon_entrega = lon
 
 
 class ServicioComentario(models.Model):

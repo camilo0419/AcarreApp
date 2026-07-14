@@ -1,4 +1,6 @@
 from django.contrib.auth.decorators import login_required
+from django.contrib.staticfiles import finders
+from django.http import Http404, HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils.timezone import localdate
@@ -107,3 +109,14 @@ def index(request):
     if rol == "CONDUCTOR":
         return redirect("rutas:list")
     return redirect("servicios:mis")
+
+
+def service_worker(request):
+    path = finders.find("sw.js")
+    if not path:
+        raise Http404("Service worker no encontrado")
+    with open(path, "rb") as sw_file:
+        response = HttpResponse(sw_file.read(), content_type="application/javascript")
+    response["Service-Worker-Allowed"] = "/"
+    response["Cache-Control"] = "no-cache"
+    return response

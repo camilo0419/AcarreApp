@@ -2,6 +2,7 @@ import json
 import logging
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 from pywebpush import webpush, WebPushException
 from .models import PushSubscription
@@ -50,6 +51,10 @@ def send_webpush_to_user(user, title, body, data=None, urgency="normal"):
     """
     Envía una notificación a todas las suscripciones del usuario dado.
     """
+    if not settings.VAPID_PRIVATE_KEY:
+        logger.warning("Web Push omitido: VAPID_PRIVATE_KEY no configurada.")
+        return
+
     payload = _payload(
         title, body, data,
         require_interaction=True,  # que no desaparezca sola
@@ -81,15 +86,21 @@ def send_webpush_to_user(user, title, body, data=None, urgency="normal"):
         except Exception as e:
             logger.exception("Error enviando push a %s: %s", user, e)
 
-def send_webpush_to_users(users_qs, title, body, data=None, urgency="normal"):
+def send_webpush_to_users(users_qs, title, body, data=None, urgency="normal", empresa=None):
     """
     Envía a todas las suscripciones de un queryset de usuarios.
     """
+    if not settings.VAPID_PRIVATE_KEY:
+        logger.warning("Web Push omitido: VAPID_PRIVATE_KEY no configurada.")
+        return
+
     payload = _payload(title, body, data)
     vapid = _vapid()
     headers = _urgency_headers(urgency)
 
     subs = PushSubscription.objects.filter(user__in=users_qs)
+    if empresa is not None:
+        subs = subs.filter(Q(empresa=empresa) | Q(empresa__isnull=True))
     for s in subs:
         try:
             webpush(
@@ -119,7 +130,7 @@ def send_webpush_to_empresa(empresa, title, body, data=None, urgency="normal", e
         users_qs = users_qs.exclude(pk=getattr(exclude_user, "pk", exclude_user))
 
     def _send():
-        send_webpush_to_users(users_qs, title, body, data=data, urgency=urgency)
+        send_webpush_to_users(users_qs, title, body, data=data, urgency=urgency, empresa=empresa)
 
     try:
         # Si hay transacción en curso, enviamos después del commit

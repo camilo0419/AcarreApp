@@ -186,7 +186,7 @@
       <div class="card-body">
         {% with rol=user.userprofile.rol|default_if_none:'' %}
           {% if object.ruta.estado == "ACTIVA" %}
-            {% if user.is_superuser or user.is_staff %}
+            {% if user.is_superuser or user.is_staff or rol == "GERENTE" %}
               <div class="d-flex flex-wrap gap-2 mb-3">
                 {% if not object.recogido %}
                   <form id="form-recogido" method="post" action="{% url 'servicios:marcar_recogido' object.id %}">
