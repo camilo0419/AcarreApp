@@ -1,35 +1,24 @@
-﻿.venv/
+﻿# Entornos
+.venv/
 venv/
 env/
-ENV/
 
+# Variables privadas
 .env
-*.env
-!.env.example
+.env.*
 
+# Bases locales
 db.sqlite3
 *.sqlite3
-*.db
 
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
 
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
-
-*.egg-info/
-build/
-dist/
-pip-wheel-metadata/
-
-*.log
-.coverage
-htmlcov/
-tmp/
-*.zip
-
+# Django
 staticfiles/
 media/
+
+# IDE
+.vscode/
+.idea/
